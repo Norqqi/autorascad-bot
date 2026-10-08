@@ -18,6 +18,7 @@ from aiogram.types import (
     WebAppInfo,
 )
 
+import admins
 import config
 import db
 import scheduler
@@ -96,15 +97,21 @@ async def cmd_start(message: Message) -> None:
 
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
-    await message.answer(
+    text = (
         "Команды:\n"
         "/store — 🛍 каталог номеров (открывается приложением)\n"
-        "/unsub — отписаться от уведомлений\n\n"
-        "Только для админа:\n"
-        "/broadcast &lt;текст&gt; — отправить своё сообщение всем\n"
-        "/stats — сколько всего подписчиков\n"
-        "/stock — наличие товаров (в наличии / нет)"
+        "/unsub — отписаться от уведомлений"
     )
+    if _is_admin(message.from_user):
+        text += (
+            "\n\n<b>Только для админа:</b>\n"
+            "/admin — 🎛 админ-панель (наличие + админы)\n"
+            "/broadcast &lt;текст&gt; — отправить своё сообщение всем\n"
+            "/add @username — дать права админа\n"
+            "/del @username — забрать права\n"
+            "/admins — список админов"
+        )
+    await message.answer(text)
 
 
 @router.message(Command("unsub"))
@@ -120,11 +127,36 @@ async def on_error(event: ErrorEvent) -> None:
 
 # --------------------------- Команды админа ---------------------------
 
+# Чаты, от которых ждём @username после нажатия «Добавить админа».
+_pending_admin_add: set[int] = set()
+
+
+def _is_admin(user) -> bool:
+    """Главный админ (ADMIN_ID) + все добавленные через /add."""
+    if not user:
+        return False
+    return admins.is_admin(user.id, config.ADMIN_ID)
+
+
+async def _resolve_user(bot: Bot, ref: str) -> tuple[int, str] | None:
+    """@username (или username без @) -> (user_id, username)."""
+    ref = (ref or "").strip().split()[0].lstrip("@")
+    if not ref:
+        return None
+    try:
+        chat = await bot.get_chat(ref)
+    except Exception as e:
+        print(f"[admin] не удалось найти {ref}: {e}")
+        return None
+    if chat is None or chat.type != "private":
+        return None
+    return chat.id, (chat.username or ref)
+
+
 @router.message(Command("broadcast"))
 async def cmd_broadcast(message: Message) -> None:
-    if not message.from_user or message.from_user.id != config.ADMIN_ID:
-        await message.answer("⛔ Только админ может делать рассылку.")
-        return
+    if not _is_admin(message.from_user):
+        return  # молча игнорируем
 
     text = message.text or ""
     _, _, payload = text.partition(" ")  # всё после /broadcast
@@ -137,18 +169,71 @@ async def cmd_broadcast(message: Message) -> None:
     await message.answer(f"✅ Готово: доставлено {ok}, ошибок {failed}.")
 
 
-@router.message(Command("stats"))
-async def cmd_stats(message: Message) -> None:
-    if not message.from_user or message.from_user.id != config.ADMIN_ID:
-        await message.answer("⛔ Только админ может смотреть статистику.")
+@router.message(Command("add"))
+async def cmd_add(message: Message) -> None:
+    if not _is_admin(message.from_user):
         return
-    total, active = await db.count()
-    await message.answer(f"Всего подписчиков: {total}\nАктивных: {active}")
+
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer(
+            "Использование:\n<code>/add @username</code>\n\n"
+            "Или нажми «👥 Админы» в панели → «➕ Добавить админа»."
+        )
+        return
+
+    found = await _resolve_user(message.bot, parts[1])
+    if not found:
+        await message.answer("❌ Не нашёл такого пользователя. Проверь @ и юз.")
+        return
+
+    uid, uname = found
+    if uid == config.ADMIN_ID:
+        await message.answer("Это главный админ — его и так все права 🙂")
+        return
+    if admins.is_admin(uid, config.ADMIN_ID):
+        await message.answer(f"ℹ️ @{uname} уже админ.")
+        return
+
+    admins.add(uid, uname)
+    await message.answer(f"✅ @{uname} теперь админ.\n👥 /admins — список")
 
 
-# --------------------------- Наличие товаров ---------------------------
+@router.message(Command("del"))
+async def cmd_del(message: Message) -> None:
+    if not _is_admin(message.from_user):
+        return
 
-def _stock_kb() -> InlineKeyboardMarkup:
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("Использование: <code>/del @username</code>")
+        return
+
+    found = await _resolve_user(message.bot, parts[1])
+    if not found:
+        await message.answer("❌ Не нашёл такого пользователя.")
+        return
+
+    uid, uname = found
+    if uid == config.ADMIN_ID:
+        await message.answer("⛔ Главного админа нельзя удалить.")
+        return
+    if admins.remove(uid):
+        await message.answer(f"🛑 @{uname} больше не админ.")
+    else:
+        await message.answer(f"ℹ️ @{uname} и так не админ.")
+
+
+@router.message(Command("admins"))
+async def cmd_admins(message: Message) -> None:
+    if not _is_admin(message.from_user):
+        return
+    await message.answer(_admins_text(), reply_markup=_admin_list_kb())
+
+
+# --------------------------- Админ-панель ---------------------------
+
+def _panel_kb() -> InlineKeyboardMarkup:
     rows = []
     for p in store.PRODUCTS:
         ok = stock.is_available(p["id"])
@@ -158,25 +243,75 @@ def _stock_kb() -> InlineKeyboardMarkup:
             text=f"{mark} {p['name']} — {label}",
             callback_data=f"stock:{p['id']}",
         )])
+    rows.append([InlineKeyboardButton(
+        text=f"👥 Админы ({len(admins.load()) + 1})",
+        callback_data="adm:list",
+    )])
+    rows.append([InlineKeyboardButton(
+        text="➕ Добавить админа",
+        callback_data="adm:add",
+    )])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _admins_text() -> str:
+    main = f"👑 id {config.ADMIN_ID} — главный (нельзя удалить)"
+    extra = admins.load()
+    if not extra:
+        return "👥 <b>Админы</b>\n\n" + main + "\n\nДругих нет."
+    lines = [main]
+    for uid, uname in extra.items():
+        lines.append(f"• @{uname} — id {uid}")
+    return "👥 <b>Админы</b>\n\n" + "\n".join(lines)
+
+
+def _admin_list_kb() -> InlineKeyboardMarkup:
+    rows = []
+    for uid, uname in admins.load().items():
+        rows.append([InlineKeyboardButton(
+            text=f"🛑 Убрать @{uname}",
+            callback_data=f"adm:del:{uid}",
+        )])
+    rows.append([InlineKeyboardButton(
+        text="➕ Добавить админа",
+        callback_data="adm:add",
+    )])
+    rows.append([InlineKeyboardButton(
+        text="◀️ Назад к панели",
+        callback_data="adm:back",
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _open_panel(message: Message) -> None:
+    await message.answer(
+        "🎛 <b>Админ-панель</b>\n\n"
+        "• Нажми на строку товара — переключишь наличие\n"
+        "• «👥 Админы» — список и удаление\n"
+        "• «➕ Добавить админа» — пришлёшь его @username\n\n"
+        "Каталог обновляется сразу, без перезапуска.",
+        reply_markup=_panel_kb(),
+    )
 
 
 @router.message(Command("stock"))
 async def cmd_stock(message: Message) -> None:
-    if not message.from_user or message.from_user.id != config.ADMIN_ID:
-        return  # просто игнорируем: функционал админа не показываем
-    await message.answer(
-        "📦 <b>Наличие товаров</b>\n\n"
-        "Нажми на строку — наличие переключится.\n"
-        "Каталог в приложении обновится сразу, без перезапуска.",
-        reply_markup=_stock_kb(),
-    )
+    if not _is_admin(message.from_user):
+        return  # молча: функционал админа не показываем
+    await _open_panel(message)
+
+
+@router.message(Command("admin"))
+async def cmd_admin(message: Message) -> None:
+    if not _is_admin(message.from_user):
+        return
+    await _open_panel(message)
 
 
 @router.callback_query(F.data.startswith("stock:"))
 async def cb_stock(callback: CallbackQuery) -> None:
-    if not callback.from_user or callback.from_user.id != config.ADMIN_ID:
-        await callback.answer("⛔ Только админ может менять наличие", show_alert=True)
+    if not _is_admin(callback.from_user):
+        await callback.answer("⛔ Только для админа", show_alert=True)
         return
 
     try:
@@ -198,9 +333,62 @@ async def cb_stock(callback: CallbackQuery) -> None:
 
     if callback.message:
         try:
-            await callback.message.edit_reply_markup(reply_markup=_stock_kb())
+            await callback.message.edit_reply_markup(reply_markup=_panel_kb())
         except Exception:
             pass
+
+
+@router.callback_query(F.data.startswith("adm:"))
+async def cb_admins(callback: CallbackQuery) -> None:
+    if not _is_admin(callback.from_user):
+        await callback.answer("⛔ Только для админа", show_alert=True)
+        return
+
+    action = callback.data.split(":", 2)[1]
+
+    if action == "add":
+        _pending_admin_add.add(callback.message.chat.id if callback.message else callback.from_user.id)
+        await callback.answer()
+        await callback.message.answer(
+            "➕ Пришли <b>@username</b> нового админа следующим сообщением.\n"
+            "Отмена — /cancel"
+        )
+        return
+
+    if action == "del":
+        try:
+            uid = int(callback.data.split(":", 2)[2])
+        except (ValueError, IndexError):
+            await callback.answer("Ошибка 😕")
+            return
+        if uid == config.ADMIN_ID:
+            await callback.answer("⛔ Главного админа нельзя удалить", show_alert=True)
+            return
+        admins.remove(uid)
+        await callback.answer("🛑 Админ удалён")
+        try:
+            await callback.message.edit_text(_admins_text(), reply_markup=_admin_list_kb())
+        except Exception:
+            pass
+        return
+
+    if action == "back":
+        await callback.answer()
+        try:
+            await callback.message.edit_text(
+                "🎛 <b>Админ-панель</b>\n\n"
+                "• Нажми на строку товара — переключишь наличие\n"
+                "• «👥 Админы» — список и удаление\n"
+                "• «➕ Добавить админа» — пришлёшь его @username",
+                reply_markup=_panel_kb(),
+            )
+        except Exception:
+            pass
+        return
+
+    # action == "list"
+    await callback.answer()
+    await callback.message.answer(_admins_text(), reply_markup=_admin_list_kb())
 
 
 # -------------------------------- Маркет --------------------------------
@@ -348,6 +536,35 @@ async def cb_store_back(callback: CallbackQuery) -> None:
 @router.message()
 async def auto_subscribe(message: Message) -> None:
     user = message.from_user
+
+    # Ждём @username после кнопки «➕ Добавить админа»
+    if message.chat.id in _pending_admin_add:
+        _pending_admin_add.discard(message.chat.id)
+        text = (message.text or "").strip()
+
+        if text.lower() in {"/cancel", "cancel", "отмена"}:
+            await message.answer("✋ Отменил.")
+            return
+
+        found = await _resolve_user(message.bot, text)
+        if not found:
+            _pending_admin_add.add(message.chat.id)  # даём попробовать снова
+            await message.answer(
+                "❌ Не нашёл такого пользователя.\n"
+                "Приши <b>@username</b> ещё раз или /cancel."
+            )
+            return
+
+        uid, uname = found
+        if uid == config.ADMIN_ID:
+            await message.answer("Это главный админ — ему и так всё можно 🙂")
+        else:
+            if not admins.is_admin(uid, config.ADMIN_ID):
+                admins.add(uid, uname)
+            await message.answer(f"✅ @{uname} теперь админ.\n👥 /admins — список")
+        return
+
+    # Автоподписка: любое сообщение = подписка на уведомления
     await db.ensure_subscribed(
         message.chat.id,
         user.username if user else None,

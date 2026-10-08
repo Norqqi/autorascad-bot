@@ -11,3 +11,4 @@ __pycache__/
 *.db
 stock.json
 webapp/catalog.html
+admins.json
