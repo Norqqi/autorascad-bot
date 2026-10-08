@@ -42,6 +42,39 @@ async def subscribe(chat_id: int, username: str | None) -> None:
         await db.commit()
 
 
+async def get_username(user_id: int) -> str | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT username FROM subscribers WHERE chat_id = ?", (user_id,)
+        )
+        row = await cursor.fetchone()
+    if row and row[0]:
+        return row[0]
+    return None
+
+
+async def find_by_username(username: str) -> tuple[int, str] | None:
+    """Ищем подписчика по @username (регистр не важен).
+
+    Путь надёжный: Telegram не всегда разрешает боту искать пользователя
+    по нику, а мы и так храним ник каждого, кто писал боту.
+    """
+    uname = (username or "").strip().lstrip("@")
+    if not uname:
+        return None
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT chat_id, username FROM subscribers "
+            "WHERE LOWER(username) = LOWER(?) AND username IS NOT NULL AND username != '' "
+            "ORDER BY subscribed DESC, created_at DESC LIMIT 1",
+            (uname,),
+        )
+        row = await cursor.fetchone()
+    if row:
+        return row[0], (row[1] or uname)
+    return None
+
+
 async def ensure_subscribed(chat_id: int, username: str | None) -> bool:
     """Автоподписка: пишем в базу только если человек ещё не активный.
 

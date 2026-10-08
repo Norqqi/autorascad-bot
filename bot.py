@@ -138,15 +138,37 @@ def _is_admin(user) -> bool:
     return admins.is_admin(user.id, config.ADMIN_ID)
 
 
+_RESOLVE_HINT = (
+    "Как найти:\\n"
+    "• юзернейм должен быть точным (как в профиле, без пробелов)\\n"
+    "• человек должен <b>хоть раз написать боту</b> — тогда он есть в базе\\n"
+    "• либо пришли <b>числовой ID</b>: <code>/add 123456789</code>"
+)
+
+
 async def _resolve_user(bot: Bot, ref: str) -> tuple[int, str] | None:
-    """@username (или username без @) -> (user_id, username)."""
+    """@username / username / числовой ID -> (user_id, username)."""
     ref = (ref or "").strip().split()[0].lstrip("@")
     if not ref:
         return None
+
+    # 1) Числовой ID — сработает всегда
+    if ref.isdigit():
+        uid = int(ref)
+        uname = await db.get_username(uid) or ""
+        return uid, uname
+
+    # 2) Своя база подписчиков (надёжно: Telegram не всегда отдаёт боту
+    #    пользователя по нику, а мы храним ник каждого, кто писал боту)
+    found = await db.find_by_username(ref)
+    if found:
+        return found
+
+    # 3) API Telegram — на случай, если человек ещё не писал боту
     try:
         chat = await bot.get_chat(ref)
     except Exception as e:
-        print(f"[admin] не удалось найти {ref}: {e}")
+        print(f"[admin] get_chat({ref}): {e}")
         return None
     if chat is None or chat.type != "private":
         return None
@@ -184,19 +206,20 @@ async def cmd_add(message: Message) -> None:
 
     found = await _resolve_user(message.bot, parts[1])
     if not found:
-        await message.answer("❌ Не нашёл такого пользователя. Проверь @ и юз.")
+        await message.answer("❌ Не нашёл такого пользователя.\n\n" + _RESOLVE_HINT)
         return
 
     uid, uname = found
     if uid == config.ADMIN_ID:
         await message.answer("Это главный админ — его и так все права 🙂")
         return
+    name = admins.display_name(uid, uname)
     if admins.is_admin(uid, config.ADMIN_ID):
-        await message.answer(f"ℹ️ @{uname} уже админ.")
+        await message.answer(f"ℹ️ {name} уже админ.")
         return
 
     admins.add(uid, uname)
-    await message.answer(f"✅ @{uname} теперь админ.\n👥 /admins — список")
+    await message.answer(f"✅ {name} теперь админ.\n👥 /admins — список")
 
 
 @router.message(Command("del"))
@@ -211,17 +234,18 @@ async def cmd_del(message: Message) -> None:
 
     found = await _resolve_user(message.bot, parts[1])
     if not found:
-        await message.answer("❌ Не нашёл такого пользователя.")
+        await message.answer("❌ Не нашёл такого пользователя.\n\n" + _RESOLVE_HINT)
         return
 
     uid, uname = found
     if uid == config.ADMIN_ID:
         await message.answer("⛔ Главного админа нельзя удалить.")
         return
+    name = admins.display_name(uid, uname)
     if admins.remove(uid):
-        await message.answer(f"🛑 @{uname} больше не админ.")
+        await message.answer(f"🛑 {name} больше не админ.")
     else:
-        await message.answer(f"ℹ️ @{uname} и так не админ.")
+        await message.answer(f"ℹ️ {name} и так не админ.")
 
 
 @router.message(Command("admins"))
@@ -261,7 +285,7 @@ def _admins_text() -> str:
         return "👥 <b>Админы</b>\n\n" + main + "\n\nДругих нет."
     lines = [main]
     for uid, uname in extra.items():
-        lines.append(f"• @{uname} — id {uid}")
+        lines.append(f"• {admins.display_name(uid, uname)}")
     return "👥 <b>Админы</b>\n\n" + "\n".join(lines)
 
 
@@ -269,7 +293,7 @@ def _admin_list_kb() -> InlineKeyboardMarkup:
     rows = []
     for uid, uname in admins.load().items():
         rows.append([InlineKeyboardButton(
-            text=f"🛑 Убрать @{uname}",
+            text=f"🛑 Убрать {admins.display_name(uid, uname)}",
             callback_data=f"adm:del:{uid}",
         )])
     rows.append([InlineKeyboardButton(
@@ -550,18 +574,18 @@ async def auto_subscribe(message: Message) -> None:
         if not found:
             _pending_admin_add.add(message.chat.id)  # даём попробовать снова
             await message.answer(
-                "❌ Не нашёл такого пользователя.\n"
-                "Приши <b>@username</b> ещё раз или /cancel."
+                "❌ Не нашёл такого пользователя.\n\n" + _RESOLVE_HINT
             )
             return
 
         uid, uname = found
+        name = admins.display_name(uid, uname)
         if uid == config.ADMIN_ID:
             await message.answer("Это главный админ — ему и так всё можно 🙂")
         else:
             if not admins.is_admin(uid, config.ADMIN_ID):
                 admins.add(uid, uname)
-            await message.answer(f"✅ @{uname} теперь админ.\n👥 /admins — список")
+            await message.answer(f"✅ {name} теперь админ.\n👥 /admins — список")
         return
 
     # Автоподписка: любое сообщение = подписка на уведомления
