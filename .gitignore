@@ -9,4 +9,5 @@ __pycache__/
 
 # Локальные данные
 *.db
+stock.json
 webapp/catalog.html

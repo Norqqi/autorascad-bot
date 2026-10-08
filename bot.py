@@ -21,6 +21,7 @@ from aiogram.types import (
 import config
 import db
 import scheduler
+import stock
 import store
 
 router = Router()
@@ -101,7 +102,8 @@ async def cmd_help(message: Message) -> None:
         "/unsub — отписаться от уведомлений\n\n"
         "Только для админа:\n"
         "/broadcast &lt;текст&gt; — отправить своё сообщение всем\n"
-        "/stats — сколько всего подписчиков"
+        "/stats — сколько всего подписчиков\n"
+        "/stock — наличие товаров (в наличии / нет)"
     )
 
 
@@ -142,6 +144,63 @@ async def cmd_stats(message: Message) -> None:
         return
     total, active = await db.count()
     await message.answer(f"Всего подписчиков: {total}\nАктивных: {active}")
+
+
+# --------------------------- Наличие товаров ---------------------------
+
+def _stock_kb() -> InlineKeyboardMarkup:
+    rows = []
+    for p in store.PRODUCTS:
+        ok = stock.is_available(p["id"])
+        mark = "✅" if ok else "❌"
+        label = "в наличии" if ok else "нет в наличии"
+        rows.append([InlineKeyboardButton(
+            text=f"{mark} {p['name']} — {label}",
+            callback_data=f"stock:{p['id']}",
+        )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.message(Command("stock"))
+async def cmd_stock(message: Message) -> None:
+    if not message.from_user or message.from_user.id != config.ADMIN_ID:
+        return  # просто игнорируем: функционал админа не показываем
+    await message.answer(
+        "📦 <b>Наличие товаров</b>\n\n"
+        "Нажми на строку — наличие переключится.\n"
+        "Каталог в приложении обновится сразу, без перезапуска.",
+        reply_markup=_stock_kb(),
+    )
+
+
+@router.callback_query(F.data.startswith("stock:"))
+async def cb_stock(callback: CallbackQuery) -> None:
+    if not callback.from_user or callback.from_user.id != config.ADMIN_ID:
+        await callback.answer("⛔ Только админ может менять наличие", show_alert=True)
+        return
+
+    try:
+        pid = int(callback.data.split(":", 1)[1])
+    except (ValueError, IndexError):
+        await callback.answer("Ошибка 😕")
+        return
+
+    if not store.get_product(pid):
+        await callback.answer("Товар не найден 😔")
+        return
+
+    new_state = stock.toggle(pid)
+    product = store.get_product(pid) or {}
+    name = product.get("name", f"#{pid}")
+    await callback.answer(
+        f"{name}: {'✅ в наличии' if new_state else '❌ нет в наличии'}"
+    )
+
+    if callback.message:
+        try:
+            await callback.message.edit_reply_markup(reply_markup=_stock_kb())
+        except Exception:
+            pass
 
 
 # -------------------------------- Маркет --------------------------------
@@ -187,7 +246,11 @@ async def cmd_store(message: Message) -> None:
 
     buttons = [
         InlineKeyboardButton(
-            text=f"{p['name']} — {p['price']}",
+            text=(
+                f"❌ {p['name']} — нет в наличии"
+                if not stock.is_available(p["id"])
+                else f"{p['name']} — {p['price']}"
+            ),
             callback_data=f"store:prod:{p['id']}",
         )
         for p in store.PRODUCTS
@@ -263,7 +326,11 @@ async def cb_store_back(callback: CallbackQuery) -> None:
         return
     buttons = [
         InlineKeyboardButton(
-            text=f"{p['name']} — {p['price']}",
+            text=(
+                f"❌ {p['name']} — нет в наличии"
+                if not stock.is_available(p["id"])
+                else f"{p['name']} — {p['price']}"
+            ),
             callback_data=f"store:prod:{p['id']}",
         )
         for p in store.PRODUCTS

@@ -75,7 +75,10 @@ def get_product(product_id: int) -> dict | None:
 
 
 def public_products() -> list[dict]:
-    """Товары для мини-приложения: флаг отдельно от названия."""
+    """Товары для мини-приложения: флаг отдельно от названия + наличие."""
+    import stock
+
+    avail = stock.load_all()
     out = []
     for p in PRODUCTS:
         name = p["name"]
@@ -88,6 +91,7 @@ def public_products() -> list[dict]:
             "price": p["price"],
             "desc": p.get("desc", ""),
             "bonus": p.get("bonus", ""),
+            "available": avail.get(p["id"], True),
         })
     return out
 
