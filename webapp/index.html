@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Каталог номеров</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #ffffff; --card: #f5f7fa; --text: #111111; --muted: #6b7280;
+    --accent: #2f6fed; --accent-text: #ffffff; --border: #e5e7eb;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); padding: 14px 14px 50px;
+    min-height: 100vh;
+  }
+  h1 { font-size: 15px; line-height: 1.45; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 14px; display: flex; flex-direction: column;
+    position: relative; overflow: hidden;
+  }
+  .flag { font-size: 38px; line-height: 1; margin-bottom: 8px; }
+  .name { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+  .prefix { color: var(--muted); font-size: 12.5px; margin-bottom: 10px; }
+  .price { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
+  .buy {
+    margin-top: auto; width: 100%; padding: 10px; border: none; cursor: pointer;
+    background: var(--accent); color: var(--accent-text);
+    border-radius: 10px; font-size: 14px; font-weight: 600;
+    transition: opacity .15s;
+  }
+  .buy:active { opacity: .75; }
+  .buy:disabled { opacity: .45; cursor: not-allowed; }
+  .empty { text-align: center; color: var(--muted); padding: 40px 0; }
+  .footer { text-align: center; color: var(--muted); font-size: 11.5px; margin-top: 16px; }
+</style>
+</head>
+<body>
+  <h1 id="title">Загрузка…</h1>
+  <div class="sub" id="subtitle"></div>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden>Пока нет товаров 🙈</div>
+
+<script>
+  const tg = window.Telegram?.WebApp;
+  if (tg) {
+    tg.ready();
+    tg.expand();
+    tg.setHeaderColor?.("secondary_bg_color");
+    tg.setBackgroundColor?.("bg_color");
+    // тема Telegram (тёмная/светлая)
+    const tp = tg.themeParams || {};
+    const set = (k, v) => document.documentElement.style.setProperty(k, v);
+    if (tp.bg_color) { set("--bg", tp.bg_color); set("--card", tp.secondary_bg_color || "#f5f7fa"); }
+    if (tp.text_color) { set("--text", tp.text_color); }
+    if (tp.hint_color) { set("--muted", tp.hint_color); }
+    if (tp.button_color) { set("--accent", tp.button_color); }
+    if (tp.button_text_color) { set("--accent-text", tp.button_text_color); }
+    if (tp.section_bg_color) { set("--card", tp.section_bg_color); }
+    if (tp.section_separator_color) { set("--border", tp.section_separator_color); }
+  }
+
+  // Статическая сборка: данные вшиваются генератором (webapp/catalog.html).
+  // Динамическая (dev): данные подтягиваются с /api/*.
+  let config = { seller: "", title: "", description: "" };
+  let injected = window.__CATALOG_DATA__ || null;
+
+  async function loadConfig() {
+    if (injected) { config = injected.config; }
+    else {
+      try {
+        const r = await fetch("/api/config");
+        config = await r.json();
+      } catch (e) { console.error("config", e); }
+    }
+    document.getElementById("title").textContent = config.title || "Каталог";
+    document.getElementById("subtitle").textContent = config.description || "";
+  }
+
+  function renderProducts(list) {
+    const grid = document.getElementById("grid");
+    const empty = document.getElementById("empty");
+    grid.innerHTML = "";
+    if (!list.length) { empty.hidden = false; return; }
+    empty.hidden = true;
+    for (const p of list) {
+      const card = document.createElement("div");
+      card.className = "card";
+
+      const flag = document.createElement("div");
+      flag.className = "flag";
+      flag.textContent = p.flag || "📱";
+
+      const name = document.createElement("div");
+      name.className = "name";
+      name.textContent = p.name;
+
+      const prefix = document.createElement("div");
+      prefix.className = "prefix";
+      prefix.textContent = "Код страны: " + (p.prefix || "—");
+
+      const price = document.createElement("div");
+      price.className = "price";
+      price.textContent = p.price;
+
+      const buy = document.createElement("button");
+      buy.className = "buy";
+      buy.textContent = "🛒 Купить";
+      if (config.seller) {
+        buy.onclick = () => openBuy(p);
+      } else {
+        buy.disabled = true;
+        buy.textContent = "Скоро";
+      }
+
+      card.append(flag, name, prefix, price, buy);
+      grid.appendChild(card);
+    }
+  }
+
+  function openBuy(p) {
+    const text = "Здравствуйте! Хочу купить номер " + p.name +
+                 " (код " + (p.prefix || "") + ") за " + p.price + ". Есть в наличии?";
+    const url = "https://t.me/" + config.seller + "?text=" + encodeURIComponent(text);
+    if (tg && tg.openTelegramLink) { tg.openTelegramLink(url); }
+    else { window.location.href = url; }
+  }
+
+  async function init() {
+    await loadConfig();
+    if (injected) { renderProducts(injected.products); return; }
+    try {
+      const r = await fetch("/api/products");
+      renderProducts(await r.json());
+    } catch (e) {
+      document.getElementById("empty").hidden = false;
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>
