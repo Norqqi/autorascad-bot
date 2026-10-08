@@ -39,9 +39,10 @@ async def _run(bot: Bot) -> None:
             # срабатываем, если текущая минута совпала и сегодня ещё не отправляли
             if (now.hour, now.minute) == (t.hour, t.minute) and (key_date, hhmm) not in fired:
                 fired.add((key_date, hhmm))
-                ok, failed = await broadcast(
-                    bot, f"⏰ Напоминание: сейчас {hhmm}!"
-                )
+                # Рассылаем только если админ задал свой текст уведомления.
+                if not config.NOTIFY_TEXT:
+                    continue
+                ok, failed = await broadcast(bot, config.NOTIFY_TEXT)
                 print(f"[scheduler] {hhmm}: доставлено {ok}, ошибок {failed}")
 
         # чистим старые записи, чтобы множество не росло бесконечно

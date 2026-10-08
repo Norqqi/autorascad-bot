@@ -47,5 +47,9 @@ def _parse_times(raw: str) -> list[time]:
 
 NOTIFY_TIMES: list[time] = _parse_times(os.getenv("NOTIFY_TIMES", "09:00"))
 
+# Текст автоматического уведомления — пишешь ТЫ.
+# Если пусто — автоматических рассылок нет вовсе, шлёт только админ (/broadcast).
+NOTIFY_TEXT: str = os.getenv("NOTIFY_TEXT", "").strip()
+
 if not BOT_TOKEN:
     raise SystemExit("BOT_TOKEN не задан! Укажи его в .env или в настройках хостинга.")

@@ -85,12 +85,11 @@ async def cmd_start(message: Message) -> None:
     )
     await message.answer(
         "Привет! 👋\n\n"
-        "Я умею:\n"
-        "• /store — 🛍 маркет: выбрать товар и купить\n"
-        "• /sub — подписаться на уведомления\n"
-        "• /unsub — отписаться\n"
-        "• /status — статус подписки\n\n"
-        "Админ может писать /broadcast &lt;текст&gt; — я разошлю это всем подписчикам."
+        "🛍 <b>VirtualBot</b> — каталог виртуальных номеров.\n\n"
+        "Команды:\n"
+        "• /store — открыть каталог\n"
+        "• /unsub — отписаться от уведомлений\n\n"
+        "Ты уже подписан на уведомления автоматически. 😉"
     )
 
 
@@ -98,21 +97,12 @@ async def cmd_start(message: Message) -> None:
 async def cmd_help(message: Message) -> None:
     await message.answer(
         "Команды:\n"
-        "/store — 🛍 маркет: товары с фото и ценами, покупка в 2 клика\n"
-        "/sub — подписаться на уведомления\n"
-        "/unsub — отписаться\n"
-        "/status — статус подписки и общая статистика\n\n"
+        "/store — 🛍 каталог номеров (открывается приложением)\n"
+        "/unsub — отписаться от уведомлений\n\n"
         "Только для админа:\n"
-        "/broadcast &lt;текст&gt; — рассылка всем подписчикам\n"
+        "/broadcast &lt;текст&gt; — отправить своё сообщение всем\n"
         "/stats — сколько всего подписчиков"
     )
-
-
-@router.message(Command("sub"))
-async def cmd_sub(message: Message) -> None:
-    user = message.from_user
-    await db.subscribe(message.chat.id, user.username if user else None)
-    await message.answer("✅ Вы подписаны на уведомления!")
 
 
 @router.message(Command("unsub"))
@@ -124,19 +114,6 @@ async def cmd_unsub(message: Message) -> None:
 async def on_error(event: ErrorEvent) -> None:
     """Глобальный перехватчик: любая ошибка в обработчиках не роняет бота."""
     print(f"[error] {type(event.exception).__name__}: {event.exception}")
-
-
-@router.message(Command("status"))
-async def cmd_status(message: Message) -> None:
-    total, active = await db.count()
-    await message.answer(
-        f"Ваш chat_id: <code>{message.chat.id}</code>\n"
-        f"Подписчиков всего: {total}\n"
-        f"Активных: {active}\n"
-        f"Расписание уведомлений: "
-        f"{', '.join(t.strftime('%H:%M') for t in config.NOTIFY_TIMES)}",
-        parse_mode=ParseMode.HTML,
-    )
 
 
 # --------------------------- Команды админа ---------------------------
@@ -297,6 +274,19 @@ async def cb_store_back(callback: CallbackQuery) -> None:
     await callback.message.answer("📞 Доступные номера:", reply_markup=kb)
 
 
+# ------------------------- Автоподписка -------------------------
+# Обработчик зарегистрирован ПОСЛЕДНИМ: все известные команды выше
+# срабатывают первыми, а любое другое сообщение просто оформляет подписку.
+
+@router.message()
+async def auto_subscribe(message: Message) -> None:
+    user = message.from_user
+    await db.ensure_subscribed(
+        message.chat.id,
+        user.username if user else None,
+    )
+
+
 # ------------------------------- Запуск -------------------------------
 
 async def start_webapp_server() -> None:
@@ -371,10 +361,8 @@ async def main() -> None:
     try:
         await bot.set_my_commands([
             BotCommand(command="start", description="Начать работу с ботом"),
-            BotCommand(command="store", description="🛍 Маркет"),
-            BotCommand(command="sub", description="Подписаться на уведомления"),
+            BotCommand(command="store", description="🛍 Каталог номеров"),
             BotCommand(command="unsub", description="Отписаться от уведомлений"),
-            BotCommand(command="status", description="Статус подписки"),
             BotCommand(command="help", description="Помощь"),
         ])
     except Exception as e:

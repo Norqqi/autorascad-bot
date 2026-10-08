@@ -42,6 +42,30 @@ async def subscribe(chat_id: int, username: str | None) -> None:
         await db.commit()
 
 
+async def ensure_subscribed(chat_id: int, username: str | None) -> bool:
+    """Автоподписка: пишем в базу только если человек ещё не активный.
+
+    Возвращает True, если подписка была оформлена прямо сейчас.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT subscribed FROM subscribers WHERE chat_id = ?", (chat_id,)
+        )
+        row = await cursor.fetchone()
+        if row is not None and row[0] == 1:
+            return False
+        await db.execute(
+            """
+            INSERT INTO subscribers (chat_id, username, subscribed)
+            VALUES (?, ?, 1)
+            ON CONFLICT(chat_id) DO UPDATE SET subscribed = 1, username = excluded.username
+            """,
+            (chat_id, username),
+        )
+        await db.commit()
+    return True
+
+
 async def unsubscribe(chat_id: int) -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
