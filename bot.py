@@ -13,6 +13,7 @@ from aiogram.types import (
     ErrorEvent,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    MenuButtonWebApp,
     Message,
     WebAppInfo,
 )
@@ -184,27 +185,29 @@ async def seller_username(bot: Bot) -> str:
 
 @router.message(Command("store"))
 async def cmd_store(message: Message) -> None:
-    # Кнопка мини-приложения при наличии HTTPS-ссылки
-    top_kb = []
+    # Каталог живёт в мини-приложении — открываем только его.
     if config.WEBAPP_URL:
-        top_kb.append([InlineKeyboardButton(
-            text="🛍 Открыть каталог (приложение)",
-            web_app=WebAppInfo(url=config.WEBAPP_URL),
-        )])
-    await message.answer(
-        f"{store.STORE_TITLE}\n{store.STORE_DESCRIPTION}\n\n"
-        "👇 Выбери номер ниже — покажу карточку со страной, ценой и кнопкой покупки",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=top_kb) if top_kb else None,
-    )
-
-    username = await seller_username(message.bot)
-    if not username:
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text="🛍 Открыть каталог",
+                web_app=WebAppInfo(url=config.WEBAPP_URL),
+            )
+        ]])
         await message.answer(
-            "⚠️ Продавец пока не настроил username — покупка не работает."
+            "🛍 <b>Каталог номеров VirtualBot</b>\n\n"
+            "Нажми кнопку ниже — откроется каталог с регионами и ценами.",
+            reply_markup=kb,
         )
         return
 
-    # Одним сообщением — ряд кнопок с номерами
+    # Запасной вариант: домен ещё не настроен — прежний список кнопок.
+    username = await seller_username(message.bot)
+    if not username:
+        await message.answer(
+            "⚠️ Каталог временно недоступен — домен приложения не настроен."
+        )
+        return
+
     buttons = [
         InlineKeyboardButton(
             text=f"{p['name']} — {p['price']}",
@@ -376,6 +379,18 @@ async def main() -> None:
         ])
     except Exception as e:
         print(f"[startup] set_my_commands не прошла: {e}")
+
+    # Кнопка меню чата («≡») сразу открывает мини-приложение каталога.
+    if config.WEBAPP_URL:
+        try:
+            await bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(
+                    text="🛍 Каталог",
+                    web_app=WebAppInfo(url=config.WEBAPP_URL),
+                )
+            )
+        except Exception as e:
+            print(f"[startup] set_chat_menu_button не прошла: {e}")
 
     scheduler.start(bot)  # ежедневные уведомления по NOTIFY_TIMES
 
