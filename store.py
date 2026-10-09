@@ -34,44 +34,50 @@ PRODUCTS = [
     {
         "id": 1,
         "name": "🇺🇸 США",
-        "desc": "Самый популярный регион для верификаций",
+        "desc": "Номер для регистрации где угодно",
         "price": "130 ₽",
         "prefix": "+1",
         "code": "us",
-        "bonus": "🔥 Ходовой: смс-верификация почты, соцсетей, сервисов",
+        "bonus": "🔥 Берут чаще всего: почта, соцсети, мессенджеры",
     },
     {
         "id": 2,
         "name": "🇨🇦 Канада",
-        "desc": "Северная Америка, стабильный номер",
+        "desc": "Тот же +1, но Канада",
         "price": "130 ₽",
         "prefix": "+1",
         "code": "ca",
-        "bonus": "🍁 Отличный выбор для зарубежных сервисов",
+        "bonus": "🍁 Заходит, когда США не пускает",
     },
     {
         "id": 3,
         "name": "🇨🇴 Колумбия",
-        "desc": "Южная Америка, бюджетная верификация",
+        "desc": "Дёшево и работает",
         "price": "100 ₽",
         "prefix": "+57",
         "code": "co",
-        "bonus": "💵 Самый выгодный вариант в каталоге",
+        "bonus": "💵 Самая низкая цена в списке",
     },
     {
         "id": 4,
         "name": "🇺🇿 Узбекистан",
-        "desc": "СНГ, быстрая активация",
+        "desc": "СНГ, смс приходит быстро",
         "price": "110 ₽",
         "prefix": "+998",
         "code": "uz",
-        "bonus": "🚀 Активация почти мгновенная",
+        "bonus": "🚀 Активация почти мгновенно",
     },
 ]
 
 
 def get_product(product_id: int) -> dict | None:
     return next((p for p in PRODUCTS if p["id"] == product_id), None)
+
+
+def price_of(product: dict) -> str:
+    """Цена товара: из prices.json (если админ менял) или из кода."""
+    import prices
+    return prices.get_price(product["id"], product.get("price", ""))
 
 
 def public_products() -> list[dict]:
@@ -88,7 +94,7 @@ def public_products() -> list[dict]:
             "name": name.replace(flag, "").strip() if flag else name,
             "flag": flag,
             "prefix": p.get("prefix", ""),
-            "price": p["price"],
+            "price": price_of(p),
             "desc": p.get("desc", ""),
             "bonus": p.get("bonus", ""),
             "available": avail.get(p["id"], True),
@@ -109,7 +115,7 @@ def product_caption(product: dict) -> str:
         product["desc"],
         f"📞 Код страны: <code>{product['prefix']}</code>",
         "",
-        f"💰 Цена: <b>{product['price']}</b>",
+        f"💰 Цена: <b>{price_of(product)}</b>",
         *[f"✨ {p}" for p in perks],
         "",
         "👇 Жми «Купить» — откроется чат со мной с готовым сообщением",
@@ -125,7 +131,7 @@ def buy_link(seller_username: str, product: dict) -> str:
     """
     text = (
         f"Здравствуйте! Хочу купить номер {product['name']} "
-        f"(код {product['prefix']}) за {product['price']}. Есть в наличии?"
+        f"(код {product['prefix']}) за {price_of(product)}. Есть в наличии?"
     )
     return f"tg://resolve?domain={seller_username}&text={quote(text)}"
 

@@ -31,9 +31,15 @@
     position: relative;
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    overscroll-behavior-y: none;
   }
 
   /* ---------- Синие неоновые свечения на фоне ---------- */
+  /* Фоновые свечения: статичные (без анимации) — на телефоне
+     постоянный repaint размытого слоя заметно грузит GPU. */
   .glow {
     position: fixed;
     border-radius: 50%;
@@ -45,12 +51,11 @@
   .glow-1 {
     width: 280px; height: 280px; top: -90px; left: -80px;
     background: radial-gradient(circle, #0a84ff 0%, rgba(10,132,255,0) 70%);
-    animation: pulse 7s ease-in-out infinite;
   }
   .glow-2 {
     width: 320px; height: 320px; bottom: -120px; right: -110px;
     background: radial-gradient(circle, #0057ff 0%, rgba(0,87,255,0) 70%);
-    animation: pulse 9s ease-in-out infinite reverse;
+    opacity: .5;
   }
   .glow-3 {
     width: 240px; height: 240px; top: 42%; left: 50%;
@@ -89,10 +94,6 @@
   @keyframes float {
     0%, 100% { transform: translateY(0) scale(1); opacity: .9; }
     50%      { transform: translateY(-26px) scale(1.12); opacity: .55; }
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: .45; transform: scale(1); }
-    50%      { opacity: .7;  transform: scale(1.1); }
   }
 
   /* ---------- Вспышка при переходе между страницами ---------- */
@@ -235,8 +236,6 @@
     font-size: 15px; cursor: pointer;
     color: var(--text);
     background: rgba(255,255,255,.07);
-    backdrop-filter: blur(18px) saturate(160%);
-    -webkit-backdrop-filter: blur(18px) saturate(160%);
     border: var(--hair) solid rgba(255,255,255,.32);
     box-shadow: 0 0 6px rgba(255,255,255,.13), 0 8px 22px rgba(0,0,0,.5);
     border-radius: 13px;
@@ -267,8 +266,6 @@
   .sec {
     display: flex; align-items: center; gap: 12px;
     background: rgba(255,255,255,.06);
-    backdrop-filter: blur(22px) saturate(170%);
-    -webkit-backdrop-filter: blur(22px) saturate(170%);
     border: var(--hair) solid rgba(255,255,255,.28);
     box-shadow: 0 0 6px rgba(255,255,255,.12), 0 8px 24px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.25);
     border-radius: 15px;
@@ -298,8 +295,6 @@
 
   .card {
     background: rgba(255,255,255,.07);
-    backdrop-filter: blur(24px) saturate(175%);
-    -webkit-backdrop-filter: blur(24px) saturate(175%);
     border: var(--hair) solid rgba(255,255,255,.28);
     box-shadow:
       0 0 6px rgba(255,255,255,.12),
@@ -310,7 +305,7 @@
     padding: 14px;
     display: flex; flex-direction: column;
     position: relative; overflow: hidden;
-    animation: cardIn .5s cubic-bezier(.22,.9,.3,1) both;
+    animation: cardIn .45s cubic-bezier(.22,.9,.3,1) both;
     animation-delay: var(--d, 0s);
   }
   .card::after {
@@ -318,9 +313,10 @@
     background: linear-gradient(180deg, rgba(255,255,255,.085), rgba(255,255,255,0));
     pointer-events: none; border-radius: 16px 16px 0 0;
   }
+  /* только opacity + transform: фильтры в анимации на телефоне дорогие */
   @keyframes cardIn {
-    from { opacity: 0; transform: translateY(22px) scale(.96); filter: blur(8px); }
-    to   { opacity: 1; transform: none; filter: blur(0); }
+    from { opacity: 0; transform: translateY(18px) scale(.97); }
+    to   { opacity: 1; transform: none; }
   }
 
   .flag {
@@ -381,17 +377,9 @@
     box-shadow: 0 0 16px rgba(10,132,255,.6), 0 0 40px rgba(0,140,255,.28),
                 inset 0 1px 0 rgba(255,255,255,.35);
     transition: filter .15s, transform .12s, box-shadow .2s;
-    overflow: hidden;
-  }
-  .buy::after {
-    content: ""; position: absolute; top: 0; bottom: 0; width: 50%; left: -70%;
-    background: linear-gradient(100deg, rgba(255,255,255,0), rgba(255,255,255,.4), rgba(255,255,255,0));
-    animation: shine 3.6s ease-in-out infinite;
-    animation-delay: .6s;
   }
   .buy:active { transform: scale(.96); filter: brightness(1.18); box-shadow: 0 0 26px rgba(0,180,255,.85); }
   .buy:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
-  .buy:disabled::after { display: none; }
 
   /* ---------- Нет в наличии ---------- */
   .buy.out {
@@ -430,8 +418,6 @@
     text-align: center;
     font-size: 11.5px; color: var(--muted);
     background: rgba(255,255,255,.05);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
     border: var(--hair) solid rgba(255,255,255,.24);
     box-shadow: 0 0 6px rgba(255,255,255,.1), inset 0 1px 0 rgba(255,255,255,.2);
     border-radius: 13px;
@@ -441,6 +427,12 @@
 
   .empty { text-align: center; color: var(--muted); padding: 40px 0; }
   .footer { text-align: center; color: #55688a; font-size: 11.5px; margin-top: 20px; position: relative; z-index: 1; }
+
+  /* Кто просит меньше движения — выключаем анимации фоновых орбов и бликов */
+  @media (prefers-reduced-motion: reduce) {
+    .orb, .cta::after, .card { animation: none !important; }
+    .wrap { transition: none; }
+  }
 </style>
 </head>
 <body>
@@ -475,14 +467,14 @@
       <div class="brand-name">VirtualBot</div>
     </div>
 
-    <button class="cta" id="openCatalog">🚀 Открыть каталог</button>
+    <button class="cta" id="openCatalog">Открыть каталог</button>
 
     <div class="features">
       <div class="feature">
         <div class="f-icon">⚡</div>
         <div>
-          <div class="f-title">Без обмана — быстро</div>
-          <div class="f-text">Номер приходит сразу после оплаты. Никакого ожидания и лишних вопросов.</div>
+          <div class="f-title">Без обмана, быстро</div>
+          <div class="f-text">Оплатил — сразу номер на руках. Без «ждите час» и предоплат незнакомым людям.</div>
         </div>
       </div>
 
@@ -490,7 +482,7 @@
         <div class="f-icon">💬</div>
         <div>
           <div class="f-title">Куча отзывов</div>
-          <div class="f-text">Нас рекомендуют друзьям — сотни довольных покупателей уже вернулись снова.</div>
+          <div class="f-text">Пиши в лс — скину скрины переписок, кого интересует. Люди возвращаются не первый раз.</div>
         </div>
       </div>
 
@@ -498,12 +490,12 @@
         <div class="f-icon">💎</div>
         <div>
           <div class="f-title">Всё качественно</div>
-          <div class="f-text">Проверенные живые номера, аккуратная работа и поддержка на каждом шаге.</div>
+          <div class="f-text">Номер живой, смс приходит. Не пришла — разберусь и заменю, вопросов не будет.</div>
         </div>
       </div>
     </div>
 
-    <div class="footer">Только проверенные номера · Работаем без посредников</div>
+    <div class="footer">Работаю сам, без посредников · Отвечаю быстро</div>
   </div>
 
   <!-- ==================== КАТАЛОГ ==================== -->
@@ -517,15 +509,15 @@
     <div class="sec">
       <div class="sec-icon">🌍</div>
       <div class="sec-body">
-        <div class="sec-title">Доступные регионы</div>
-        <div class="sec-sub">Выбери страну — покажу цену и бонусы</div>
+        <div class="sec-title">Что есть в наличии</div>
+        <div class="sec-sub">Нажми «Купить» — откроется личка с продавцом</div>
       </div>
     </div>
 
     <div class="grid" id="grid"></div>
-    <div class="empty" id="empty" hidden>Пока нет товаров 🙈</div>
+    <div class="empty" id="empty" hidden>Пока пусто — скоро добавлю</div>
 
-    <div class="note">💳 Оплата и выдача номера — в чате с продавцом.<br>Нажми «Купить», откроется диалог сразу с нужным человеком.</div>
+    <div class="note">Цена на карточке — финальная, без доплат.<br>Оплата и выдача в личке, номер приходит сразу после оплаты.</div>
   </div>
 
 <script>
@@ -592,10 +584,10 @@
 
       const buy = document.createElement("button");
       buy.className = "buy";
-      buy.textContent = "🛒 Купить";
+      buy.textContent = "Купить";
       if (p.available === false) {
         buy.classList.add("out");
-        buy.textContent = "🚫 Нет в наличии";
+        buy.textContent = "Нет в наличии";
         buy.disabled = true;
         card.classList.add("out");
       } else if (config.seller) {
@@ -611,8 +603,8 @@
   }
 
   function openBuy(p) {
-    const text = "Здравствуйте! Хочу купить номер " + p.name +
-                 " (код " + (p.prefix || "") + ") за " + p.price + ". Есть в наличии?";
+    const text = "Здравствуйте! Хочу номер " + p.name + " (" + (p.prefix || "") +
+                 ") за " + p.price + ". Еще есть?";
     const url = "https://t.me/" + config.seller + "?text=" + encodeURIComponent(text);
     if (tg && tg.openTelegramLink) { tg.openTelegramLink(url); }
     else { window.location.href = url; }

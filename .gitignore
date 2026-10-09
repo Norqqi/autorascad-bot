@@ -12,3 +12,4 @@ __pycache__/
 stock.json
 webapp/catalog.html
 admins.json
+prices.json

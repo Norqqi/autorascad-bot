@@ -21,6 +21,7 @@ from aiogram.types import (
 import admins
 import config
 import db
+import prices
 import scheduler
 import stock
 import store
@@ -105,7 +106,8 @@ async def cmd_help(message: Message) -> None:
     if _is_admin(message.from_user):
         text += (
             "\n\n<b>Только для админа:</b>\n"
-            "/admin — 🎛 админ-панель (наличие + админы)\n"
+            "/admin — 🎛 админ-панель (наличие, цены, админы)\n"
+            "/price — 💰 цены: меню или <code>/price 2 150</code>\n"
             "/broadcast &lt;текст&gt; — отправить своё сообщение всем\n"
             "/add @username — дать права админа\n"
             "/del @username — забрать права\n"
@@ -127,8 +129,9 @@ async def on_error(event: ErrorEvent) -> None:
 
 # --------------------------- Команды админа ---------------------------
 
-# Чаты, от которых ждём @username после нажатия «Добавить админа».
-_pending_admin_add: set[int] = set()
+# Чаты, в которых бот ждёт ответ текстом (username нового админа
+# или новая цена товара). Ключ — id чата, значение — что ждём.
+_pending: dict[int, dict] = {}
 
 
 def _is_admin(user) -> bool:
@@ -138,12 +141,10 @@ def _is_admin(user) -> bool:
     return admins.is_admin(user.id, config.ADMIN_ID)
 
 
-_RESOLVE_HINT = (
-    "Как найти:\\n"
-    "• юзернейм должен быть точным (как в профиле, без пробелов)\\n"
-    "• человек должен <b>хоть раз написать боту</b> — тогда он есть в базе\\n"
-    "• либо пришли <b>числовой ID</b>: <code>/add 123456789</code>"
-)
+_RESOLVE_HINT = """Как найти:
+• юзернейм должен быть точным (как в профиле, без пробелов)
+• человек должен <b>хоть раз написать боту</b> — тогда он есть в базе
+• либо пришли <b>числовой ID</b>: <code>/add 123456789</code>"""
 
 
 async def _resolve_user(bot: Bot, ref: str) -> tuple[int, str] | None:
@@ -268,12 +269,46 @@ def _panel_kb() -> InlineKeyboardMarkup:
             callback_data=f"stock:{p['id']}",
         )])
     rows.append([InlineKeyboardButton(
+        text=f"💰 Цены ({len(prices.load_all())} изменено)",
+        callback_data="pr:list",
+    )])
+    rows.append([InlineKeyboardButton(
         text=f"👥 Админы ({len(admins.load()) + 1})",
         callback_data="adm:list",
     )])
     rows.append([InlineKeyboardButton(
         text="➕ Добавить админа",
         callback_data="adm:add",
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+PANEL_TEXT = (
+    "🎛 <b>Админ-панель</b>\n\n"
+    "<b>Наличие</b> — тапни строку товара, он пропадёт/появится в каталоге\n"
+    "<b>Цены</b> — «💰 Цены», потом тап по товару и пришли новую сумму\n"
+    "<b>Админы</b> — «👥» и «➕»\n\n"
+    "Всё применяется сразу, перезапуск не нужен."
+)
+
+
+def _prices_kb() -> InlineKeyboardMarkup:
+    rows = []
+    for p in store.PRODUCTS:
+        base = p["price"]
+        now = store.price_of(p)
+        mark = "✏️ " if now != base else ""
+        rows.append([InlineKeyboardButton(
+            text=f"{mark}{p['name']} — {now}",
+            callback_data=f"pr:{p['id']}",
+        )])
+    rows.append([InlineKeyboardButton(
+        text="↩️ Сбросить все цены",
+        callback_data="pr:resetall",
+    )])
+    rows.append([InlineKeyboardButton(
+        text="◀️ Назад к панели",
+        callback_data="pr:back",
     )])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -308,14 +343,7 @@ def _admin_list_kb() -> InlineKeyboardMarkup:
 
 
 async def _open_panel(message: Message) -> None:
-    await message.answer(
-        "🎛 <b>Админ-панель</b>\n\n"
-        "• Нажми на строку товара — переключишь наличие\n"
-        "• «👥 Админы» — список и удаление\n"
-        "• «➕ Добавить админа» — пришлёшь его @username\n\n"
-        "Каталог обновляется сразу, без перезапуска.",
-        reply_markup=_panel_kb(),
-    )
+    await message.answer(PANEL_TEXT, reply_markup=_panel_kb())
 
 
 @router.message(Command("stock"))
@@ -371,10 +399,11 @@ async def cb_admins(callback: CallbackQuery) -> None:
     action = callback.data.split(":", 2)[1]
 
     if action == "add":
-        _pending_admin_add.add(callback.message.chat.id if callback.message else callback.from_user.id)
+        chat_id = callback.message.chat.id if callback.message else callback.from_user.id
+        _pending[chat_id] = {"kind": "admin"}
         await callback.answer()
         await callback.message.answer(
-            "➕ Пришли <b>@username</b> нового админа следующим сообщением.\n"
+            "➕ Пришли <b>@username</b> (или числовой ID) нового админа.\n"
             "Отмена — /cancel"
         )
         return
@@ -400,11 +429,7 @@ async def cb_admins(callback: CallbackQuery) -> None:
         await callback.answer()
         try:
             await callback.message.edit_text(
-                "🎛 <b>Админ-панель</b>\n\n"
-                "• Нажми на строку товара — переключишь наличие\n"
-                "• «👥 Админы» — список и удаление\n"
-                "• «➕ Добавить админа» — пришлёшь его @username",
-                reply_markup=_panel_kb(),
+                PANEL_TEXT, reply_markup=_panel_kb()
             )
         except Exception:
             pass
@@ -413,6 +438,106 @@ async def cb_admins(callback: CallbackQuery) -> None:
     # action == "list"
     await callback.answer()
     await callback.message.answer(_admins_text(), reply_markup=_admin_list_kb())
+
+
+# ----------------------------- Редактор цен -----------------------------
+
+PRICE_TEXT = (
+    "💰 <b>Цены</b>\n\n"
+    "Тапни товар и пришли новую сумму (просто число, например <code>150</code>).\n"
+    "Каталог в приложении обновится сразу — ничего перезапускать не надо.\n"
+    "✏️ — цена уже отличается от той, что в коде."
+)
+
+
+def _find_product(ref: str) -> dict | None:
+    """«2» / «США» / «сша» -> товар."""
+    ref = (ref or "").strip()
+    if ref.isdigit():
+        return store.get_product(int(ref))
+    low = ref.lower()
+    return next((p for p in store.PRODUCTS if low in p["name"].lower()), None)
+
+
+async def _set_price(message: Message, ref: str, raw: str) -> None:
+    product = _find_product(ref)
+    if not product:
+        names = ", ".join(f"{p['id']}={p['name']}" for p in store.PRODUCTS)
+        await message.answer(f"❌ Такого товара нет.\nЕсть: {names}")
+        return
+
+    new_price = prices.parse(raw)
+    if not new_price:
+        await message.answer("❌ Нужно число: <code>150</code> или <code>150 ₽</code>.")
+        return
+
+    old = store.price_of(product)
+    prices.set_price(product["id"], new_price)
+    await message.answer(
+        f"✅ <b>{product['name']}</b>: {old} → <b>{new_price}</b>\n"
+        f"Каталог уже показывает новую цену.",
+        reply_markup=_prices_kb(),
+    )
+
+
+@router.message(Command("price"))
+async def cmd_price(message: Message) -> None:
+    if not _is_admin(message.from_user):
+        return
+
+    args = (message.text or "").split(maxsplit=2)
+    if len(args) >= 3:            # /price 2 150  — сразу поменять
+        await _set_price(message, args[1], args[2])
+        return
+    await message.answer(PRICE_TEXT, reply_markup=_prices_kb())
+
+
+@router.callback_query(F.data.startswith("pr:"))
+async def cb_prices(callback: CallbackQuery) -> None:
+    if not _is_admin(callback.from_user):
+        await callback.answer("⛔ Только для админа", show_alert=True)
+        return
+
+    arg = callback.data.split(":", 2)[1]
+
+    if arg == "back":
+        await callback.answer()
+        try:
+            await callback.message.edit_text(
+                PANEL_TEXT, reply_markup=_panel_kb()
+            )
+        except Exception:
+            pass
+        return
+
+    if arg == "list":
+        await callback.answer()
+        await callback.message.answer(PRICE_TEXT, reply_markup=_prices_kb())
+        return
+
+    if arg == "resetall":
+        for p in store.PRODUCTS:
+            prices.reset(p["id"])
+        await callback.answer("↩️ Все цены вернулись к базовым")
+        try:
+            await callback.message.edit_reply_markup(reply_markup=_prices_kb())
+        except Exception:
+            pass
+        return
+
+    if not arg.isdigit() or not store.get_product(int(arg)):
+        await callback.answer("Товар не найден 😕")
+        return
+
+    product = store.get_product(int(arg))
+    chat_id = callback.message.chat.id if callback.message else callback.from_user.id
+    _pending[chat_id] = {"kind": "price", "pid": product["id"]}
+    await callback.answer()
+    await callback.message.answer(
+        f"✏️ Приши новую цену для <b>{product['name']}</b>.\n"
+        f"Сейчас: <b>{store.price_of(product)}</b>\n"
+        f"Просто число, например <code>150</code>. Отмена — /cancel"
+    )
 
 
 # -------------------------------- Маркет --------------------------------
@@ -528,9 +653,6 @@ async def cb_store_buy(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data == "store:back")
-
-
-@router.callback_query(F.data == "store:back")
 async def cb_store_back(callback: CallbackQuery) -> None:
     await callback.answer()
     username = await seller_username(callback.bot)
@@ -561,18 +683,41 @@ async def cb_store_back(callback: CallbackQuery) -> None:
 async def auto_subscribe(message: Message) -> None:
     user = message.from_user
 
-    # Ждём @username после кнопки «➕ Добавить админа»
-    if message.chat.id in _pending_admin_add:
-        _pending_admin_add.discard(message.chat.id)
+    # Ждём текст от админа: @username нового админа или новую цену
+    task = _pending.pop(message.chat.id, None)
+    if task and _is_admin(message.from_user):
         text = (message.text or "").strip()
 
         if text.lower() in {"/cancel", "cancel", "отмена"}:
             await message.answer("✋ Отменил.")
             return
 
+        if task.get("kind") == "price":
+            new_price = prices.parse(text)
+            if not new_price:
+                _pending[message.chat.id] = task   # даём попробовать снова
+                await message.answer(
+                    "❌ Это не похоже на цену. Приши просто число: <code>150</code>\n"
+                    "Отмена — /cancel"
+                )
+                return
+            product = store.get_product(task.get("pid", -1))
+            if not product:
+                await message.answer("❌ Товар пропал 😕")
+                return
+            old = store.price_of(product)
+            prices.set_price(product["id"], new_price)
+            await message.answer(
+                f"✅ <b>{product['name']}</b>: {old} → <b>{new_price}</b>\n"
+                f"Каталог уже показывает новую цену.",
+                reply_markup=_prices_kb(),
+            )
+            return
+
+        # kind == "admin"
         found = await _resolve_user(message.bot, text)
         if not found:
-            _pending_admin_add.add(message.chat.id)  # даём попробовать снова
+            _pending[message.chat.id] = task  # даём попробовать снова
             await message.answer(
                 "❌ Не нашёл такого пользователя.\n\n" + _RESOLVE_HINT
             )
@@ -587,6 +732,9 @@ async def auto_subscribe(message: Message) -> None:
                 admins.add(uid, uname)
             await message.answer(f"✅ {name} теперь админ.\n👥 /admins — список")
         return
+    if task:
+        # Ответ пришёл не от админа — ждём дальше
+        _pending[message.chat.id] = task
 
     # Автоподписка: любое сообщение = подписка на уведомления
     await db.ensure_subscribed(
