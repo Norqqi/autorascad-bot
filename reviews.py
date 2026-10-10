@@ -21,6 +21,9 @@ MAX = 5            # сколько отзывов показывать
 TIMEOUT = 8        # секунд на запрос к t.me
 MAX_LEN = 400      # обрезаем слишком длинные посты
 
+# Служебные сообщения Telegram — в ленту отзывов их тащить не нужно
+SERVICE = {"channel created", "group created", "chat created", "migrated to a broadcast group"}
+
 _DATA_DIR = os.getenv("DATA_DIR", "")
 CACHE_FILE = os.path.join(_DATA_DIR, "reviews_cache.json") if _DATA_DIR else "reviews_cache.json"
 
@@ -117,7 +120,8 @@ class _FeedParser(HTMLParser):
 def parse_feed(html: str) -> list[dict]:
     p = _FeedParser()
     p.feed(html or "")
-    return p.posts[:MAX]
+    posts = [x for x in p.posts if x.get("text", "").lower() not in SERVICE]
+    return posts[:MAX]
 
 
 # ------------------------------------------------------------------ хранилище

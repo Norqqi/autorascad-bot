@@ -572,6 +572,7 @@
     text-shadow: 0 0 10px rgba(0, 160, 255, .45);
   }
   .rev-list { display: flex; flex-direction: column; gap: 8px; }
+  .rev-list[hidden] { display: none; }
   .rev-item {
     background: rgba(255, 255, 255, .055);
     border: var(--hair) solid rgba(255, 255, 255, .20);
@@ -764,7 +765,7 @@
 
     <div class="note">Все покупки — в личке продавца, бот оплату не принимает.<br>Цены на карточках финальные, без комиссий и доплат.</div>
 
-    <div class="how">
+    <div class="how" id="howBox">
       <div class="how-title">Как проходит покупка</div>
       <ol>
         <li><b>Выбери</b>, что нужно: номера — во вкладке «Номера», звёзды — в «⭐️ Звёзды».</li>
@@ -880,6 +881,7 @@
   const tabBtns = Array.from(tabsEl.querySelectorAll(".tab"));
   const panes = [0, 1, 2].map(i => document.getElementById("pane" + i));
   const countEl = document.getElementById("count");
+  const howBox = document.getElementById("howBox");
 
   function goTab(i) {
     // индикатор съезжает ровно на ширину колонки + зазор (3px)
@@ -888,6 +890,8 @@
     panes.forEach((p, k) => p.classList.toggle("on", k === i));
     countEl.style.opacity = (i === 0) ? "1" : "0";
     if (i === 1) refreshStars();
+    if (i === 2) syncReviews();          // ленту отзывов перечитываем свежей
+    howBox.hidden = (i === 2);           // про покупку — на вкладке отзывов не нужно
   }
   tabBtns.forEach(b => b.addEventListener("click", () => goTab(+b.dataset.i)));
 
@@ -997,6 +1001,22 @@
     });
   }
 
+  /* Свежая лента: вшитая в страницу копия могла устареть (кеш WebView),
+     поэтому при открытии вкладки подтягиваем её с сервера заново. */
+  let revSyncing = false;
+  async function syncReviews() {
+    if (revSyncing) return;
+    revSyncing = true;
+    try {
+      const r = await fetch("/api/config", { cache: "no-store" });
+      const data = await r.json();
+      if (Array.isArray(data.reviewsFeed)) { config.reviewsFeed = data.reviewsFeed; }
+      if (data.reviews) { config.reviews = data.reviews; revLink.href = data.reviews; }
+      renderReviews();
+    } catch (e) { /* сервер не ответил — остаёмся на встроенной ленте */ }
+    revSyncing = false;
+  }
+
   /* ---------- Плавный переход между страницами ---------- */
   const hero = document.getElementById("hero");
   const catalog = document.getElementById("catalog");
@@ -1026,6 +1046,7 @@
   async function init() {
     await loadConfig();
     applyConfig();
+    syncReviews();                // фоном — свежие отзывы, страница не ждёт
     if (injected) { renderProducts(injected.products); return; }
     try {
       const r = await fetch("/api/products");

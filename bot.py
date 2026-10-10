@@ -896,23 +896,31 @@ async def start_webapp_server() -> None:
 
     import gen_static
 
+    # Telegram WebView держит открытую вкладку в памяти и кеширует ответы —
+    # без этого заголовка после деплоя пользователь ещё долго видит старую страницу.
+    NO_STORE = {"Cache-Control": "no-store"}
+
     async def index(request: web.Request) -> web.Response:
         reviews.kick()          # в фоне обновляем ленту, страница не ждёт сеть
-        return web.Response(text=gen_static.render(), content_type="text/html")
+        return web.Response(
+            text=gen_static.render(), content_type="text/html", headers=NO_STORE,
+        )
 
     async def health(request: web.Request) -> web.Response:
-        return web.Response(text="ok")
+        return web.Response(text="ok", headers=NO_STORE)
 
     async def api_products(request: web.Request) -> web.Response:
         return web.json_response(
             store.public_products(),
             dumps=lambda o: json.dumps(o, ensure_ascii=False),
+            headers=NO_STORE,
         )
 
     async def api_config(request: web.Request) -> web.Response:
         return web.json_response(
             store.config_payload(config.ADMIN_USERNAME),
             dumps=lambda o: json.dumps(o, ensure_ascii=False),
+            headers=NO_STORE,
         )
 
     app = web.Application()
