@@ -23,6 +23,7 @@ import config
 import db
 import extras
 import prices
+import reviews
 import scheduler
 import stock
 import store
@@ -563,6 +564,28 @@ async def cmd_reviews(message: Message) -> None:
     )
 
 
+@router.channel_post()
+async def on_channel_post(message: Message) -> None:
+    """Бот добавлен админом в ТГК с отзывами — каждый пост сразу в ленту.
+
+    Это страховка на случай, если веб-превью t.me/s/<nick> недоступно
+    или чат закрытый (тогда скрейпить его всё равно не получится).
+    """
+    chat = getattr(message, "chat", None)
+    username = ((getattr(chat, "username", None) or "")).strip()
+    expected = reviews.channel_username(extras.reviews())
+    if not username or not expected or username.lower() != expected.lower():
+        return
+
+    text = (message.text or message.caption or "").strip()
+    if not text:
+        return
+
+    url = f"https://t.me/{username}/{message.message_id}"
+    if reviews.remember(text, url):
+        print(f"[reviews] пост из @{username} попал в ленту отзывов")
+
+
 @router.callback_query(F.data.startswith("pr:"))
 async def cb_prices(callback: CallbackQuery) -> None:
     if not _is_admin(callback.from_user):
@@ -874,6 +897,7 @@ async def start_webapp_server() -> None:
     import gen_static
 
     async def index(request: web.Request) -> web.Response:
+        reviews.kick()          # в фоне обновляем ленту, страница не ждёт сеть
         return web.Response(text=gen_static.render(), content_type="text/html")
 
     async def health(request: web.Request) -> web.Response:
@@ -915,6 +939,9 @@ async def main() -> None:
     dp.errors.register(on_error)
 
     await db.init()
+
+    # Лента отзывов: поднимаем кеш с диска и фоновое обновление из ТГК.
+    reviews.start()
 
     # Если раньше был настроен webhook — снимаем, чтобы работал polling.
     try:

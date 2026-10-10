@@ -15,6 +15,7 @@ from pathlib import Path
 from aiohttp import web
 from dotenv import load_dotenv
 
+import reviews
 import store
 
 load_dotenv()
@@ -33,6 +34,7 @@ async def api_products(request: web.Request) -> web.Response:
 
 
 async def api_config(request: web.Request) -> web.Response:
+    reviews.kick()
     return web.json_response(
         store.config_payload(os.getenv("ADMIN_USERNAME", "")),
         dumps=lambda o: json.dumps(o, ensure_ascii=False),

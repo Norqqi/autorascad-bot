@@ -143,6 +143,7 @@ def get_seller(sid: str) -> dict | None:
 def config_payload(seller: str) -> dict:
     """Данные витрины для мини-приложения (вшиваются в HTML и в /api/config)."""
     import extras
+    import reviews
 
     return {
         "seller": seller,
@@ -151,4 +152,5 @@ def config_payload(seller: str) -> dict:
         "starsPrice": extras.stars_price(),
         "starsSeller": extras.stars_seller(),
         "reviews": extras.reviews(),
+        "reviewsFeed": reviews.recent(),
     }

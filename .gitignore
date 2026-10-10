@@ -14,3 +14,4 @@ webapp/catalog.html
 admins.json
 prices.json
 extras.json
+reviews_cache.json

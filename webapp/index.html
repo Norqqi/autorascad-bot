@@ -565,6 +565,29 @@
   .rev-btn:active { transform: scale(.975); filter: brightness(1.12); }
   .rev-meta { margin-top: 12px; font-size: 11.5px; color: #55688a; text-align: center; }
 
+  /* Живая лента отзывов из ТГК */
+  .rev-head {
+    margin: 17px 0 9px;
+    font-size: 12.5px; font-weight: 800; color: #9fd6ff;
+    text-shadow: 0 0 10px rgba(0, 160, 255, .45);
+  }
+  .rev-list { display: flex; flex-direction: column; gap: 8px; }
+  .rev-item {
+    background: rgba(255, 255, 255, .055);
+    border: var(--hair) solid rgba(255, 255, 255, .20);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14);
+    border-radius: 13px;
+    padding: 11px 13px;
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .rev-item:active { background: rgba(10, 132, 255, .16); border-color: rgba(120, 190, 255, .45); }
+  .rev-item-text {
+    font-size: 12.5px; line-height: 1.55; color: #dbe7fa;
+    white-space: pre-line; word-break: break-word;
+  }
+  .rev-item-date { margin-top: 6px; font-size: 10.5px; color: #5f739a; }
+
   /* ---------- Инструкция снизу ---------- */
   .how {
     margin-top: 16px;
@@ -731,6 +754,10 @@
           Заходи в чат, читай и спрашивай напрямую, если что-то сомневаешься.
         </div>
         <a class="rev-btn" id="revLink" href="https://t.me/ReBotq">Открыть чат с отзывами</a>
+
+        <div class="rev-head" id="revHead" hidden>Последние отзывы</div>
+        <div class="rev-list" id="revList"></div>
+
         <div class="rev-meta">Ссылку обновляет админ — всегда актуальная</div>
       </div>
     </div>
@@ -921,6 +948,53 @@
   function applyConfig() {
     if (config.reviews) { revLink.href = config.reviews; }
     refreshStars();
+    renderReviews();
+  }
+
+  /* Живые отзывы из ТГК */
+  function fmtDate(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+  }
+
+  function renderReviews() {
+    const head = document.getElementById("revHead");
+    const box = document.getElementById("revList");
+    const feed = Array.isArray(config.reviewsFeed) ? config.reviewsFeed.slice(0, 5) : [];
+
+    box.innerHTML = "";
+    head.hidden = feed.length === 0;
+    box.hidden = feed.length === 0;
+    if (!feed.length) return;
+
+    feed.forEach(r => {
+      const item = document.createElement("div");
+      item.className = "rev-item";
+
+      const text = document.createElement("div");
+      text.className = "rev-item-text";
+      text.textContent = r.text || "";
+      item.appendChild(text);
+
+      if (r.date) {
+        const date = document.createElement("div");
+        date.className = "rev-item-date";
+        date.textContent = fmtDate(r.date);
+        item.appendChild(date);
+      }
+
+      if (r.url) {
+        item.addEventListener("click", () => {
+          if (tg && tg.openTelegramLink) { tg.openTelegramLink(r.url); }
+          else { window.location.href = r.url; }
+        });
+      } else {
+        item.style.cursor = "default";
+      }
+
+      box.appendChild(item);
+    });
   }
 
   /* ---------- Плавный переход между страницами ---------- */
