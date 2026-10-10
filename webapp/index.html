@@ -909,11 +909,17 @@
   const starTotal = document.getElementById("starTotal");
 
   function starPrice() {
-    const v = parseInt(config.starsPrice, 10);
+    const v = parseFloat(config.starsPrice);
     return v > 0 ? v : 150;
   }
   function starsSeller() { return config.starsSeller || config.seller || ""; }
-  function money(n) { return n.toLocaleString("ru-RU"); }
+
+  /* 1500 -> «1 500», 1.38 -> «1,38»: дробные цены должны выглядеть аккуратно */
+  function money(n) {
+    const text = (Math.round(n * 100) / 100).toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+    const parts = text.split(".");
+    return parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ") + (parts[1] ? "," + parts[1] : "");
+  }
 
   function refreshStars() {
     document.getElementById("starRate").textContent = money(starPrice());

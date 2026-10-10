@@ -109,8 +109,8 @@ async def cmd_help(message: Message) -> None:
         text += (
             "\n\n<b>Только для админа:</b>\n"
             "/admin — 🎛 админ-панель (наличие, цены, админы)\n"
-            "/price — 💰 цены: меню или <code>/price 2 150</code>\n"
-            "/stars — ⭐️ цена звезды: <code>/stars 150</code>\n"
+            "/price — 💰 цены: меню или <code>/price 2 130</code> (можно <code>1,38</code>)\n"
+            "/stars — ⭐️ цена звезды: <code>/stars 150</code> или <code>/stars 1,38</code>\n"
             "/reviews — 💬 ссылка на чат отзывов\n"
             "/broadcast &lt;текст&gt; — отправить своё сообщение всем\n"
             "/add @username — дать права админа\n"
@@ -284,7 +284,7 @@ def _panel_kb() -> InlineKeyboardMarkup:
         callback_data="pr:list",
     )])
     rows.append([InlineKeyboardButton(
-        text=f"⭐️ Звёзды — {extras.stars_price()} ₽ за штуку",
+        text=f"⭐️ Звёзды — {prices.fmt(extras.stars_price())} ₽ за штуку",
         callback_data="pr:stars",
     )])
     rows.append([InlineKeyboardButton(
@@ -306,7 +306,7 @@ PANEL_TEXT = (
     "🎛 <b>Админ-панель</b>\n\n"
     "<b>Наличие</b> — тапни строку товара, он пропадёт/появится в каталоге\n"
     "<b>Цены</b> — «💰 Цены», потом тап по товару и пришли новую сумму\n"
-    "<b>⭐️ Звёзды</b> — тап, потом пришли цену за штуку (например 150)\n"
+    "<b>⭐️ Звёзды</b> — тап, потом пришли цену за штуку (например 150 или 1,38)\n"
     "<b>💬 Отзывы</b> — тап, потом пришли ссылку на чат (t.me/xxx)\n"
     "<b>Админы</b> — «👥» и «➕»\n\n"
     "Всё применяется сразу, перезапуск не нужен."
@@ -465,7 +465,7 @@ async def cb_admins(callback: CallbackQuery) -> None:
 
 PRICE_TEXT = (
     "💰 <b>Цены</b>\n\n"
-    "Тапни товар и пришли новую сумму (просто число, например <code>150</code>).\n"
+    "Тапни товар и пришли новую сумму: <code>150</code> или дробную <code>1,38</code>.\n"
     "Каталог в приложении обновится сразу — ничего перезапускать не надо.\n"
     "✏️ — цена уже отличается от той, что в коде."
 )
@@ -489,7 +489,7 @@ async def _set_price(message: Message, ref: str, raw: str) -> None:
 
     new_price = prices.parse(raw)
     if not new_price:
-        await message.answer("❌ Нужно число: <code>150</code> или <code>150 ₽</code>.")
+        await message.answer("❌ Нужно число: <code>150</code>, <code>1,38</code> или <code>150 ₽</code>.")
         return
 
     old = store.price_of(product)
@@ -521,21 +521,23 @@ async def cmd_stars(message: Message) -> None:
 
     args = (message.text or "").split(maxsplit=1)
     if len(args) == 2:
-        value = prices.to_int(args[1])
+        value = prices.to_float(args[1])
         if not value:
-            await message.answer("❌ Приши просто число: <code>/stars 150</code>")
+            await message.answer(
+                "❌ Приши цену: <code>/stars 150</code> или <code>/stars 1,38</code>"
+            )
             return
         extras.set_stars_price(value)
         await message.answer(
-            f"✅ За 1 ⭐️ теперь <b>{extras.stars_price()} ₽</b>. "
+            f"✅ За 1 ⭐️ теперь <b>{prices.fmt(extras.stars_price())} ₽</b>. "
             f"В каталоге цена уже новая."
         )
         return
 
     await message.answer(
-        f"⭐️ Сейчас за 1 звезду: <b>{extras.stars_price()} ₽</b>\n"
+        f"⭐️ Сейчас за 1 звезду: <b>{prices.fmt(extras.stars_price())} ₽</b>\n"
         f"Продавец: @{extras.stars_seller()}\n\n"
-        f"Поменять: <code>/stars 150</code>"
+        f"Поменять: <code>/stars 150</code> или дробной <code>/stars 1,38</code>"
     )
 
 
@@ -623,8 +625,8 @@ async def cb_prices(callback: CallbackQuery) -> None:
         _pending[_cb_chat(callback)] = {"kind": "stars"}
         await callback.answer()
         await callback.message.answer(
-            f"⭐️ Сейчас за 1 звезду просят <b>{extras.stars_price()} ₽</b>.\n"
-            f"Приши новую цену простым числом, например <code>150</code>.\n"
+            f"⭐️ Сейчас за 1 звезду просят <b>{prices.fmt(extras.stars_price())} ₽</b>.\n"
+            f"Приши новую цену: <code>150</code> или дробную <code>1,38</code>.\n"
             f"Отмена — /cancel"
         )
         return
@@ -650,7 +652,7 @@ async def cb_prices(callback: CallbackQuery) -> None:
     await callback.message.answer(
         f"✏️ Приши новую цену для <b>{product['name']}</b>.\n"
         f"Сейчас: <b>{store.price_of(product)}</b>\n"
-        f"Просто число, например <code>150</code>. Отмена — /cancel"
+        f"Например <code>150</code> или дробное <code>1,38</code>. Отмена — /cancel"
     )
 
 
@@ -811,7 +813,8 @@ async def auto_subscribe(message: Message) -> None:
             if not new_price:
                 _pending[message.chat.id] = task   # даём попробовать снова
                 await message.answer(
-                    "❌ Это не похоже на цену. Приши просто число: <code>150</code>\n"
+                    "❌ Это не похоже на цену. Приши число: <code>150</code> "
+                    "или дробное <code>1,38</code>\n"
                     "Отмена — /cancel"
                 )
                 return
@@ -829,17 +832,18 @@ async def auto_subscribe(message: Message) -> None:
             return
 
         if task.get("kind") == "stars":
-            value = prices.to_int(text)
+            value = prices.to_float(text)
             if not value:
                 _pending[message.chat.id] = task
                 await message.answer(
-                    "❌ Приши просто число: <code>150</code>\nОтмена — /cancel"
+                    "❌ Приши число: <code>150</code> или дробное <code>1,38</code>\n"
+                    "Отмена — /cancel"
                 )
                 return
-            old = extras.stars_price()
+            old = prices.fmt(extras.stars_price())
             extras.set_stars_price(value)
             await message.answer(
-                f"✅ За 1 ⭐️: {old} ₽ → <b>{extras.stars_price()} ₽</b>\n"
+                f"✅ За 1 ⭐️: {old} ₽ → <b>{prices.fmt(extras.stars_price())} ₽</b>\n"
                 f"В каталоге цена уже новая."
             )
             return

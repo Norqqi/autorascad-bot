@@ -40,17 +40,19 @@ def save(data: dict) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def stars_price() -> int:
+def stars_price() -> float:
+    """Цена за 1 ⭐️ — можно дробную (1,38)."""
     try:
-        value = int(load().get("stars_price", DEFAULT_STARS_PRICE))
+        value = round(float(load().get("stars_price", DEFAULT_STARS_PRICE)), 2)
     except (TypeError, ValueError):
-        return DEFAULT_STARS_PRICE
-    return value if value > 0 else DEFAULT_STARS_PRICE
+        return float(DEFAULT_STARS_PRICE)
+    return value if value > 0 else float(DEFAULT_STARS_PRICE)
 
 
-def set_stars_price(value: int) -> None:
+def set_stars_price(value: float) -> None:
     data = load()
-    data["stars_price"] = int(value)
+    number = round(float(value), 2)
+    data["stars_price"] = int(number) if number == int(number) else number
     save(data)
 
 
