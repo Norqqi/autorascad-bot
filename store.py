@@ -138,3 +138,17 @@ def buy_link(seller_username: str, product: dict) -> str:
 
 def get_seller(sid: str) -> dict | None:
     return next((s for s in SELLERS if s["id"] == sid), None)
+
+
+def config_payload(seller: str) -> dict:
+    """Данные витрины для мини-приложения (вшиваются в HTML и в /api/config)."""
+    import extras
+
+    return {
+        "seller": seller,
+        "title": STORE_TITLE,
+        "description": STORE_DESCRIPTION,
+        "starsPrice": extras.stars_price(),
+        "starsSeller": extras.stars_seller(),
+        "reviews": extras.reviews(),
+    }

@@ -22,11 +22,7 @@ MARKER = "let injected = window.__CATALOG_DATA__ || null;"
 
 def build_payload() -> dict:
     return {
-        "config": {
-            "seller": config.ADMIN_USERNAME,
-            "title": store.STORE_TITLE,
-            "description": store.STORE_DESCRIPTION,
-        },
+        "config": store.config_payload(config.ADMIN_USERNAME),
         "products": store.public_products(),
     }
 

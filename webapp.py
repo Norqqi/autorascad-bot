@@ -33,11 +33,10 @@ async def api_products(request: web.Request) -> web.Response:
 
 
 async def api_config(request: web.Request) -> web.Response:
-    return web.json_response({
-        "title": store.STORE_TITLE,
-        "description": store.STORE_DESCRIPTION,
-        "seller": os.getenv("ADMIN_USERNAME", ""),
-    }, dumps=lambda o: json.dumps(o, ensure_ascii=False))
+    return web.json_response(
+        store.config_payload(os.getenv("ADMIN_USERNAME", "")),
+        dumps=lambda o: json.dumps(o, ensure_ascii=False),
+    )
 
 
 async def index(request: web.Request) -> web.FileResponse:

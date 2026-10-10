@@ -29,7 +29,7 @@
     min-height: 100vh;
     padding: 16px 14px 60px;
     position: relative;
-    overflow-x: hidden;
+    /* без overflow-x: hidden — он ломает position: sticky у вкладок */
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
@@ -90,6 +90,9 @@
   .orb-14 { width: 15px; height: 15px; top: 19%;  left: 44%;  animation-duration: 11.5s; animation-delay: -2.2s; }
   .orb-15 { width: 8px;  height: 8px;  top: 68%;  right: 40%; animation-duration: 8s;  animation-delay: -5.5s; }
   .orb-16 { width: 10px; height: 10px; top: 94%;  left: 52%;  animation-duration: 12.5s; animation-delay: -6.5s; }
+  /* Половина орбов статичная: вдвое меньше анимированных слоёв,
+     а выглядит — те же самые точечки на фоне. */
+  .orb.still { animation: none; opacity: .8; }
 
   @keyframes float {
     0%, 100% { transform: translateY(0) scale(1); opacity: .9; }
@@ -105,20 +108,20 @@
   @keyframes flash { 0% { opacity: 0; } 22% { opacity: 1; } 100% { opacity: 0; } }
 
   /* ---------- Страницы ---------- */
+  /* без filter: blur() — на слабых телефонах он даёт заметный фриз */
   .wrap {
     position: relative; z-index: 1;
-    transition: opacity .3s ease, transform .3s cubic-bezier(.22,.9,.3,1), filter .3s ease;
+    transition: opacity .28s ease, transform .32s cubic-bezier(.22,.9,.3,1);
   }
   .wrap.hide {
     opacity: 0;
-    transform: translateY(-18px) scale(.965);
-    filter: blur(12px);
+    transform: translateY(-14px) scale(.97);
     pointer-events: none;
   }
-  .wrap.enter { animation: pageIn .42s cubic-bezier(.22,.9,.3,1) both; }
+  .wrap.enter { animation: pageIn .38s cubic-bezier(.22,.9,.3,1) both; }
   @keyframes pageIn {
-    from { opacity: 0; transform: translateY(30px) scale(.97); filter: blur(12px); }
-    to   { opacity: 1; transform: none; filter: blur(0); }
+    from { opacity: 0; transform: translateY(26px) scale(.97); }
+    to   { opacity: 1; transform: none; }
   }
 
   /* ---------- Бренд-блок ---------- */
@@ -260,6 +263,7 @@
     box-shadow: 0 0 10px rgba(10,132,255,.4);
     border-radius: 13px;
     padding: 0 8px;
+    transition: opacity .2s ease;
   }
 
   /* Полоса-заголовок секции */
@@ -425,6 +429,162 @@
     line-height: 1.5;
   }
 
+  /* ---------- Вкладки сверху (как сегментед-контрол в iOS) ---------- */
+  /* .tabbar — липнущая обёртка с подложкой, .tabs — сама стеклянная пилюля */
+  .tabbar {
+    position: sticky; top: 0; z-index: 6;
+    margin-bottom: 16px;
+  }
+  .tabbar::before {
+    content: ""; position: absolute; left: -14px; right: -14px; top: -24px; bottom: -24px;
+    background: linear-gradient(180deg, #000 0%, #000 55%, rgba(0, 0, 0, 0) 100%);
+    z-index: -1; pointer-events: none;
+    opacity: 0; transition: opacity .18s ease;
+  }
+  .tabbar.stuck::before { opacity: 1; }
+
+  .tabs {
+    position: relative;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px;
+    padding: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.09);
+    border: var(--hair) solid rgba(255, 255, 255, 0.26);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .22);
+  }
+  .tabs .ind {
+    position: absolute; top: 4px; left: 4px;
+    width: calc((100% - 14px) / 3);
+    height: calc(100% - 8px);
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .30), rgba(255, 255, 255, .10));
+    border: var(--hair) solid rgba(255, 255, 255, .38);
+    box-shadow: 0 0 16px rgba(10, 160, 255, .38), 0 4px 14px rgba(0, 0, 0, .45);
+    transition: transform .3s cubic-bezier(.3, .9, .3, 1);
+    pointer-events: none;
+  }
+  .tab {
+    position: relative; z-index: 1;
+    border: none; background: none; cursor: pointer;
+    padding: 10px 2px; border-radius: 999px;
+    font-size: 13px; font-weight: 700;
+    color: var(--muted);
+    transition: color .2s ease;
+  }
+  .tab.on { color: #fff; text-shadow: 0 0 10px rgba(0, 170, 255, .65); }
+
+  /* ---------- Панели вкладок ---------- */
+  .pane { display: none; }
+  .pane.on { display: block; animation: paneIn .3s cubic-bezier(.22, .9, .3, 1) both; }
+  @keyframes paneIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* ---------- Вкладка «Звёзды» ---------- */
+  .glass {
+    background: rgba(255, 255, 255, .07);
+    border: var(--hair) solid rgba(255, 255, 255, .28);
+    box-shadow:
+      0 0 6px rgba(255, 255, 255, .12),
+      0 10px 26px rgba(0, 0, 0, .55),
+      inset 0 1px 0 rgba(255, 255, 255, .26),
+      0 0 22px rgba(10, 132, 255, .10);
+    border-radius: 18px;
+    padding: 16px;
+    position: relative; overflow: hidden;
+  }
+  .glass::after {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 42%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .085), rgba(255, 255, 255, 0));
+    pointer-events: none; border-radius: 18px 18px 0 0;
+  }
+  .glass > * { position: relative; z-index: 1; }
+
+  .rate {
+    display: grid; grid-template-columns: 1fr auto 1fr;
+    align-items: center; gap: 8px;
+    margin-bottom: 14px;
+  }
+  .rate-box {
+    text-align: center;
+    padding: 13px 6px;
+    border-radius: 15px;
+    background: rgba(255, 255, 255, .06);
+    border: var(--hair) solid rgba(255, 255, 255, .22);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16);
+  }
+  .rb-ico { font-size: 26px; line-height: 1; }
+  .rb-cap { font-size: 10.5px; color: var(--muted); margin-top: 6px; letter-spacing: .04em; text-transform: uppercase; }
+  .rb-val {
+    font-size: 17px; font-weight: 900; color: #fff; margin-top: 3px;
+    text-shadow: 0 0 12px rgba(0, 160, 255, .55);
+  }
+  .rate-arrow {
+    font-size: 20px; font-weight: 800; color: #7fd4ff;
+    text-shadow: 0 0 14px rgba(0, 180, 255, .85);
+    animation: nudge 2.4s ease-in-out infinite;
+  }
+  @keyframes nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(4px); } }
+
+  .field { font-size: 12px; color: var(--muted); margin-bottom: 7px; }
+  .qty {
+    width: 100%; padding: 13px 14px;
+    border-radius: 13px;
+    background: rgba(0, 0, 0, .38);
+    border: var(--hair) solid rgba(255, 255, 255, .26);
+    color: #fff; font-size: 16px; font-weight: 700;
+    outline: none;
+    transition: border-color .18s, box-shadow .18s;
+  }
+  .qty::placeholder { color: #5f739a; font-weight: 600; }
+  .qty:focus { border-color: rgba(120, 200, 255, .75); box-shadow: 0 0 0 3px rgba(10, 132, 255, .22); }
+  .qty.err { border-color: rgba(255, 92, 92, .8); box-shadow: 0 0 0 3px rgba(255, 60, 60, .2); }
+
+  .total {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin: 13px 0;
+    font-size: 13px; color: var(--muted);
+  }
+  .total b {
+    font-size: 22px; font-weight: 900; color: #7fd4ff;
+    text-shadow: 0 0 14px rgba(10, 160, 255, .75), 0 0 32px rgba(0, 120, 255, .4);
+  }
+
+  /* ---------- Вкладка «Отзывы» ---------- */
+  .rev-text { font-size: 13px; line-height: 1.6; color: var(--muted); margin-bottom: 14px; }
+  .rev-btn {
+    display: block; text-align: center;
+    padding: 15px 16px; border-radius: 14px;
+    background: linear-gradient(135deg, #0a84ff, #00c8ff);
+    color: #fff; font-size: 15px; font-weight: 800;
+    text-decoration: none;
+    box-shadow: 0 0 22px rgba(10, 132, 255, .6), inset 0 1px 0 rgba(255, 255, 255, .35);
+    transition: transform .12s, filter .15s;
+  }
+  .rev-btn:active { transform: scale(.975); filter: brightness(1.12); }
+  .rev-meta { margin-top: 12px; font-size: 11.5px; color: #55688a; text-align: center; }
+
+  /* ---------- Инструкция снизу ---------- */
+  .how {
+    margin-top: 16px;
+    background: rgba(255, 255, 255, .05);
+    border: var(--hair) solid rgba(255, 255, 255, .24);
+    box-shadow: 0 0 6px rgba(255, 255, 255, .1), inset 0 1px 0 rgba(255, 255, 255, .18);
+    border-radius: 15px;
+    padding: 15px 16px;
+    position: relative; z-index: 1;
+  }
+  .how-title {
+    font-size: 13.5px; font-weight: 800; color: #fff;
+    text-shadow: 0 0 10px rgba(0, 160, 255, .4);
+    margin-bottom: 10px;
+  }
+  .how ol { margin: 0; padding-left: 19px; }
+  .how li { font-size: 12.5px; line-height: 1.6; color: var(--muted); margin-bottom: 7px; }
+  .how li:last-child { margin-bottom: 0; }
+  .how li b { color: #dbe7fa; font-weight: 700; }
+
   .empty { text-align: center; color: var(--muted); padding: 40px 0; }
   .footer { text-align: center; color: #55688a; font-size: 11.5px; margin-top: 20px; position: relative; z-index: 1; }
 
@@ -442,21 +602,21 @@
   <div class="glow glow-3"></div>
 
   <div class="orb orb-1"></div>
-  <div class="orb orb-2"></div>
+  <div class="orb orb-2 still"></div>
   <div class="orb orb-3"></div>
-  <div class="orb orb-4"></div>
+  <div class="orb orb-4 still"></div>
   <div class="orb orb-5"></div>
-  <div class="orb orb-6"></div>
+  <div class="orb orb-6 still"></div>
   <div class="orb orb-7"></div>
-  <div class="orb orb-8"></div>
+  <div class="orb orb-8 still"></div>
   <div class="orb orb-9"></div>
-  <div class="orb orb-10"></div>
+  <div class="orb orb-10 still"></div>
   <div class="orb orb-11"></div>
-  <div class="orb orb-12"></div>
+  <div class="orb orb-12 still"></div>
   <div class="orb orb-13"></div>
-  <div class="orb orb-14"></div>
+  <div class="orb orb-14 still"></div>
   <div class="orb orb-15"></div>
-  <div class="orb orb-16"></div>
+  <div class="orb orb-16 still"></div>
 
   <div class="flash" id="flash"></div>
 
@@ -506,18 +666,86 @@
       <div class="cat-count" id="count">—</div>
     </div>
 
-    <div class="sec">
-      <div class="sec-icon">🌍</div>
-      <div class="sec-body">
-        <div class="sec-title">Что есть в наличии</div>
-        <div class="sec-sub">Нажми «Купить» — откроется личка с продавцом</div>
+    <!-- Маячок: по нему понимаем, что вкладки прилипли к верху -->
+    <div id="tabSentinel" style="height:1px"></div>
+
+    <!-- Липнущие вкладки -->
+    <div class="tabbar" id="tabbar">
+      <div class="tabs" id="tabs">
+        <div class="ind" id="tabInd"></div>
+        <button class="tab on" data-i="0">Номера</button>
+        <button class="tab" data-i="1">⭐️ Звёзды</button>
+        <button class="tab" data-i="2">Отзывы</button>
       </div>
     </div>
 
-    <div class="grid" id="grid"></div>
-    <div class="empty" id="empty" hidden>Пока пусто — скоро добавлю</div>
+    <!-- ========== 1. Номера ========== -->
+    <div class="pane on" id="pane0">
+      <div class="sec">
+        <div class="sec-icon">🌍</div>
+        <div class="sec-body">
+          <div class="sec-title">Что есть в наличии</div>
+          <div class="sec-sub">Нажми «Купить» — откроется личка с продавцом</div>
+        </div>
+      </div>
 
-    <div class="note">Цена на карточке — финальная, без доплат.<br>Оплата и выдача в личке, номер приходит сразу после оплаты.</div>
+      <div class="grid" id="grid"></div>
+      <div class="empty" id="empty" hidden>Пока пусто — скоро добавлю</div>
+    </div>
+
+    <!-- ========== 2. Звёзды ========== -->
+    <div class="pane" id="pane1">
+      <div class="glass">
+        <div class="rate">
+          <div class="rate-box">
+            <div class="rb-ico">⭐️</div>
+            <div class="rb-cap">Отдаём</div>
+            <div class="rb-val">1 штука</div>
+          </div>
+          <div class="rate-arrow">→</div>
+          <div class="rate-box">
+            <div class="rb-ico">₽</div>
+            <div class="rb-cap">Платишь</div>
+            <div class="rb-val"><span id="starRate">—</span> ₽</div>
+          </div>
+        </div>
+
+        <div class="field">Сколько звёзд нужно</div>
+        <input class="qty" id="starQty" type="number" inputmode="numeric" min="1" step="1" placeholder="например 100">
+
+        <div class="total">
+          <span>К оплате</span>
+          <b id="starTotal">—</b>
+        </div>
+
+        <button class="buy" id="starBuy">Купить звёзды</button>
+        <div class="rev-meta">Продавец: <span id="starSeller">@—</span> · звёзды приходят сразу после оплаты</div>
+      </div>
+    </div>
+
+    <!-- ========== 3. Отзывы ========== -->
+    <div class="pane" id="pane2">
+      <div class="glass">
+        <div class="rev-text">
+          Отзывы настоящие — от людей, которые уже брали номера и звёзды.
+          Заходи в чат, читай и спрашивай напрямую, если что-то сомневаешься.
+        </div>
+        <a class="rev-btn" id="revLink" href="https://t.me/ReBotq">Открыть чат с отзывами</a>
+        <div class="rev-meta">Ссылку обновляет админ — всегда актуальная</div>
+      </div>
+    </div>
+
+    <div class="note">Все покупки — в личке продавца, бот оплату не принимает.<br>Цены на карточках финальные, без комиссий и доплат.</div>
+
+    <div class="how">
+      <div class="how-title">Как проходит покупка</div>
+      <ol>
+        <li><b>Выбери</b>, что нужно: номера — во вкладке «Номера», звёзды — в «⭐️ Звёзды».</li>
+        <li><b>Нажми «Купить»</b> — откроется личка продавца, сообщение уже написано за тебя.</li>
+        <li><b>Согласуй оплату</b> напрямую с продавцом: удобным способом и без комиссии.</li>
+        <li><b>Получи</b> — номер или звёзды приходят сразу после оплаты, обычно за пару минут.</li>
+      </ol>
+    </div>
   </div>
 
 <script>
@@ -531,17 +759,28 @@
 
   // Статическая сборка: данные вшиваются генератором (webapp/catalog.html).
   // Динамическая (dev): данные подтягиваются с /api/*.
-  let config = { seller: "", title: "", description: "" };
+  let config = {
+    seller: "", title: "", description: "",
+    starsPrice: 0, starsSeller: "", reviews: ""
+  };
   let injected = window.__CATALOG_DATA__ || null;
 
   async function loadConfig() {
-    if (injected) { config = injected.config; }
+    if (injected) { config = Object.assign(config, injected.config); }
     else {
       try {
         const r = await fetch("/api/config");
-        config = await r.json();
+        config = Object.assign(config, await r.json());
       } catch (e) { console.error("config", e); }
     }
+  }
+
+  /* Открыть чат в Telegram с готовым сообщением */
+  function openTG(username, text) {
+    if (!username) return;
+    const url = "https://t.me/" + username + (text ? "?text=" + encodeURIComponent(text) : "");
+    if (tg && tg.openTelegramLink) { tg.openTelegramLink(url); }
+    else { window.location.href = url; }
   }
 
   function renderProducts(list) {
@@ -603,11 +842,85 @@
   }
 
   function openBuy(p) {
-    const text = "Здравствуйте! Хочу номер " + p.name + " (" + (p.prefix || "") +
-                 ") за " + p.price + ". Еще есть?";
-    const url = "https://t.me/" + config.seller + "?text=" + encodeURIComponent(text);
+    openTG(config.seller,
+      "Здравствуйте! Хочу номер " + p.name + " (" + (p.prefix || "") +
+      ") за " + p.price + ". Еще есть?");
+  }
+
+  /* ================= Вкладки каталога ================= */
+  const tabsEl = document.getElementById("tabs");
+  const tabInd = document.getElementById("tabInd");
+  const tabBtns = Array.from(tabsEl.querySelectorAll(".tab"));
+  const panes = [0, 1, 2].map(i => document.getElementById("pane" + i));
+  const countEl = document.getElementById("count");
+
+  function goTab(i) {
+    // индикатор съезжает ровно на ширину колонки + зазор (3px)
+    tabInd.style.transform = "translateX(calc(" + i + " * 100% + " + i + " * 3px))";
+    tabBtns.forEach((b, k) => b.classList.toggle("on", k === i));
+    panes.forEach((p, k) => p.classList.toggle("on", k === i));
+    countEl.style.opacity = (i === 0) ? "1" : "0";
+    if (i === 1) refreshStars();
+  }
+  tabBtns.forEach(b => b.addEventListener("click", () => goTab(+b.dataset.i)));
+
+  // Чёрная подложка под вкладками появляется только когда они прилипли
+  if ("IntersectionObserver" in window) {
+    const sentinel = document.getElementById("tabSentinel");
+    const tabbar = document.getElementById("tabbar");
+    new IntersectionObserver((entries) => {
+      tabbar.classList.toggle("stuck", !entries[0].isIntersecting);
+    }, { threshold: 0 }).observe(sentinel);
+  }
+
+  /* ================= Звёзды ================= */
+  const starQty = document.getElementById("starQty");
+  const starTotal = document.getElementById("starTotal");
+
+  function starPrice() {
+    const v = parseInt(config.starsPrice, 10);
+    return v > 0 ? v : 150;
+  }
+  function starsSeller() { return config.starsSeller || config.seller || ""; }
+  function money(n) { return n.toLocaleString("ru-RU"); }
+
+  function refreshStars() {
+    document.getElementById("starRate").textContent = money(starPrice());
+    const s = starsSeller();
+    document.getElementById("starSeller").textContent = s ? "@" + s : "—";
+    const q = parseInt(starQty.value, 10);
+    starTotal.textContent = (q > 0) ? money(q * starPrice()) + " ₽" : "—";
+  }
+
+  starQty.addEventListener("input", () => {
+    starQty.classList.remove("err");
+    refreshStars();
+  });
+
+  document.getElementById("starBuy").addEventListener("click", () => {
+    const q = parseInt(starQty.value, 10);
+    if (!(q > 0)) {
+      starQty.classList.add("err");
+      starQty.focus();
+      return;
+    }
+    openTG(starsSeller(),
+      "Здравствуйте! Хочу купить " + q + " ⭐️ за " +
+      money(q * starPrice()) + " ₽. Как оплатить?");
+  });
+
+  /* ================= Отзывы ================= */
+  const revLink = document.getElementById("revLink");
+  revLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    const url = revLink.getAttribute("href") || "https://t.me/ReBotq";
     if (tg && tg.openTelegramLink) { tg.openTelegramLink(url); }
     else { window.location.href = url; }
+  });
+
+  function applyConfig() {
+    if (config.reviews) { revLink.href = config.reviews; }
+    refreshStars();
   }
 
   /* ---------- Плавный переход между страницами ---------- */
@@ -638,6 +951,7 @@
 
   async function init() {
     await loadConfig();
+    applyConfig();
     if (injected) { renderProducts(injected.products); return; }
     try {
       const r = await fetch("/api/products");

@@ -36,19 +36,24 @@ def save_all(data: dict[int, str]) -> None:
         json.dump({str(k): v for k, v in data.items()}, f, ensure_ascii=False, indent=2)
 
 
-def parse(raw: str) -> str | None:
-    """Что прислал админ -> нормализованная цена («150 ₽»). None = мусор."""
-    if not raw:
+def to_int(raw) -> int | None:
+    """«150», «150 ₽», «1 500» -> 150 / 1500. Мусор -> None."""
+    if raw is None:
         return None
     text = str(raw).strip()
-    if "-" in text:          # «-5» или диапазон «100-150» — не цена
+    if not text or "-" in text:      # «-5» или диапазон «100-150» — не цена
         return None
-    # чистим всё, кроме цифр: пробелы, ₽, «руб.», «р.», «rub»
     digits = re.sub(r"\D", "", text.replace("\u00a0", " "))
     if not digits or len(digits) > 7:
         return None
     value = int(digits)
-    if value <= 0:
+    return value if value > 0 else None
+
+
+def parse(raw: str) -> str | None:
+    """Что прислал админ -> нормализованная цена («150 ₽»). None = мусор."""
+    value = to_int(raw)
+    if not value:
         return None
     return f"{value:,}".replace(",", " ") + " ₽"
 

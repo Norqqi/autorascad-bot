@@ -21,6 +21,7 @@ from aiogram.types import (
 import admins
 import config
 import db
+import extras
 import prices
 import scheduler
 import stock
@@ -108,6 +109,8 @@ async def cmd_help(message: Message) -> None:
             "\n\n<b>Только для админа:</b>\n"
             "/admin — 🎛 админ-панель (наличие, цены, админы)\n"
             "/price — 💰 цены: меню или <code>/price 2 150</code>\n"
+            "/stars — ⭐️ цена звезды: <code>/stars 150</code>\n"
+            "/reviews — 💬 ссылка на чат отзывов\n"
             "/broadcast &lt;текст&gt; — отправить своё сообщение всем\n"
             "/add @username — дать права админа\n"
             "/del @username — забрать права\n"
@@ -139,6 +142,13 @@ def _is_admin(user) -> bool:
     if not user:
         return False
     return admins.is_admin(user.id, config.ADMIN_ID)
+
+
+def _cb_chat(callback: CallbackQuery) -> int:
+    """Чат, в котором жмут кнопку (для ожидания текстового ответа)."""
+    if callback.message:
+        return callback.message.chat.id
+    return callback.from_user.id
 
 
 _RESOLVE_HINT = """Как найти:
@@ -273,6 +283,14 @@ def _panel_kb() -> InlineKeyboardMarkup:
         callback_data="pr:list",
     )])
     rows.append([InlineKeyboardButton(
+        text=f"⭐️ Звёзды — {extras.stars_price()} ₽ за штуку",
+        callback_data="pr:stars",
+    )])
+    rows.append([InlineKeyboardButton(
+        text=f"💬 Отзывы — {extras.short_url(extras.reviews())}",
+        callback_data="pr:reviews",
+    )])
+    rows.append([InlineKeyboardButton(
         text=f"👥 Админы ({len(admins.load()) + 1})",
         callback_data="adm:list",
     )])
@@ -287,6 +305,8 @@ PANEL_TEXT = (
     "🎛 <b>Админ-панель</b>\n\n"
     "<b>Наличие</b> — тапни строку товара, он пропадёт/появится в каталоге\n"
     "<b>Цены</b> — «💰 Цены», потом тап по товару и пришли новую сумму\n"
+    "<b>⭐️ Звёзды</b> — тап, потом пришли цену за штуку (например 150)\n"
+    "<b>💬 Отзывы</b> — тап, потом пришли ссылку на чат (t.me/xxx)\n"
     "<b>Админы</b> — «👥» и «➕»\n\n"
     "Всё применяется сразу, перезапуск не нужен."
 )
@@ -492,6 +512,57 @@ async def cmd_price(message: Message) -> None:
     await message.answer(PRICE_TEXT, reply_markup=_prices_kb())
 
 
+@router.message(Command("stars"))
+async def cmd_stars(message: Message) -> None:
+    """Цена за одну звезду для вкладки «Звёзды» в каталоге."""
+    if not _is_admin(message.from_user):
+        return
+
+    args = (message.text or "").split(maxsplit=1)
+    if len(args) == 2:
+        value = prices.to_int(args[1])
+        if not value:
+            await message.answer("❌ Приши просто число: <code>/stars 150</code>")
+            return
+        extras.set_stars_price(value)
+        await message.answer(
+            f"✅ За 1 ⭐️ теперь <b>{extras.stars_price()} ₽</b>. "
+            f"В каталоге цена уже новая."
+        )
+        return
+
+    await message.answer(
+        f"⭐️ Сейчас за 1 звезду: <b>{extras.stars_price()} ₽</b>\n"
+        f"Продавец: @{extras.stars_seller()}\n\n"
+        f"Поменять: <code>/stars 150</code>"
+    )
+
+
+@router.message(Command("reviews"))
+async def cmd_reviews(message: Message) -> None:
+    """Ссылка на чат с отзывами во вкладке «Отзывы»."""
+    if not _is_admin(message.from_user):
+        return
+
+    args = (message.text or "").split(maxsplit=1)
+    if len(args) == 2:
+        if not extras.set_reviews(args[1]):
+            await message.answer(
+                "❌ Нужна ссылка вида <code>t.me/MyChat</code> или "
+                "<code>https://t.me/MyChat</code>"
+            )
+            return
+        await message.answer(
+            f"✅ Вкладка «Отзывы» ведёт на <code>{extras.short_url(extras.reviews())}</code>"
+        )
+        return
+
+    await message.answer(
+        f"💬 Сейчас стоит: <code>{extras.short_url(extras.reviews())}</code>\n\n"
+        f"Поменять: <code>/reviews t.me/МойЧат</code>"
+    )
+
+
 @router.callback_query(F.data.startswith("pr:"))
 async def cb_prices(callback: CallbackQuery) -> None:
     if not _is_admin(callback.from_user):
@@ -523,6 +594,26 @@ async def cb_prices(callback: CallbackQuery) -> None:
             await callback.message.edit_reply_markup(reply_markup=_prices_kb())
         except Exception:
             pass
+        return
+
+    if arg == "stars":
+        _pending[_cb_chat(callback)] = {"kind": "stars"}
+        await callback.answer()
+        await callback.message.answer(
+            f"⭐️ Сейчас за 1 звезду просят <b>{extras.stars_price()} ₽</b>.\n"
+            f"Приши новую цену простым числом, например <code>150</code>.\n"
+            f"Отмена — /cancel"
+        )
+        return
+
+    if arg == "reviews":
+        _pending[_cb_chat(callback)] = {"kind": "reviews"}
+        await callback.answer()
+        await callback.message.answer(
+            f"💬 Сейчас ведёт на <code>{extras.short_url(extras.reviews())}</code>\n"
+            f"Приши ссылку на чат отзывов (типа <code>t.me/MyChat</code>).\n"
+            f"Отмена — /cancel"
+        )
         return
 
     if not arg.isdigit() or not store.get_product(int(arg)):
@@ -714,6 +805,35 @@ async def auto_subscribe(message: Message) -> None:
             )
             return
 
+        if task.get("kind") == "stars":
+            value = prices.to_int(text)
+            if not value:
+                _pending[message.chat.id] = task
+                await message.answer(
+                    "❌ Приши просто число: <code>150</code>\nОтмена — /cancel"
+                )
+                return
+            old = extras.stars_price()
+            extras.set_stars_price(value)
+            await message.answer(
+                f"✅ За 1 ⭐️: {old} ₽ → <b>{extras.stars_price()} ₽</b>\n"
+                f"В каталоге цена уже новая."
+            )
+            return
+
+        if task.get("kind") == "reviews":
+            if not extras.set_reviews(text):
+                _pending[message.chat.id] = task
+                await message.answer(
+                    "❌ Нужна ссылка вида <code>t.me/MyChat</code>\nОтмена — /cancel"
+                )
+                return
+            await message.answer(
+                f"✅ Вкладка «Отзывы» ведёт на "
+                f"<code>{extras.short_url(extras.reviews())}</code>"
+            )
+            return
+
         # kind == "admin"
         found = await _resolve_user(message.bot, text)
         if not found:
@@ -767,11 +887,7 @@ async def start_webapp_server() -> None:
 
     async def api_config(request: web.Request) -> web.Response:
         return web.json_response(
-            {
-                "seller": config.ADMIN_USERNAME,
-                "title": store.STORE_TITLE,
-                "description": store.STORE_DESCRIPTION,
-            },
+            store.config_payload(config.ADMIN_USERNAME),
             dumps=lambda o: json.dumps(o, ensure_ascii=False),
         )
 
